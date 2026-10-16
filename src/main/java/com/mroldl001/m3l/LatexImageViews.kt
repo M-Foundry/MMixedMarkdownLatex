@@ -1,5 +1,6 @@
 package com.mroldl001.m3l
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -49,6 +50,7 @@ private data class InlineFormula(
 )
 
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 internal fun LatexBlockImage(
     latex: String,
     textColor: Color,
@@ -120,6 +122,7 @@ internal fun LatexBlockImage(
 }
 
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 internal fun LatexInlineLine(
     line: String,
     textColor: Color,
