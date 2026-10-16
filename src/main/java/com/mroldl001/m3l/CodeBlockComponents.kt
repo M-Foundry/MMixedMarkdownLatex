@@ -77,14 +77,7 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
         language,
         darkCodeBlock
     ) {
-        val highlighted = withContext(Dispatchers.Default) {
-            try {
-                highlightCodeLines(codeLines, language, darkCodeBlock, appContext)
-            } catch (error: Throwable) {
-                codeLines.map { AnnotatedString(it) }
-            }
-        }
-        value = highlighted
+        value = highlightCodeLinesAsync(codeLines, language, darkCodeBlock, appContext)
     }
 
     val header = LocalCodeBlockHeader.current
@@ -122,6 +115,19 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
             horizontalState = codeHScroll,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)
         )
+    }
+}
+
+private suspend fun highlightCodeLinesAsync(
+    lines: List<String>,
+    language: String?,
+    dark: Boolean,
+    context: Context
+): List<AnnotatedString> = withContext(Dispatchers.Default) {
+    try {
+        highlightCodeLines(lines, language, dark, context)
+    } catch (error: Throwable) {
+        lines.map { AnnotatedString(it) }
     }
 }
 
