@@ -12,7 +12,7 @@ MMixedMarkdown LaTeX（M3L）是一个面向 Android Jetpack Compose 的 Markdow
 ![Compose BOM](https://img.shields.io/badge/Compose%20BOM-2024.12.01-4285F4?style=flat-square\&logo=jetpackcompose\&logoColor=white)
 ![Android API](https://img.shields.io/badge/Android%20API-26%2B-3DDC84?style=flat-square\&logo=android\&logoColor=white)
 
-当前版本：`1.0.0-beta`
+[![JitPack](https://jitpack.io/v/M-Foundry/MMixedMarkdownLatex.svg)](https://jitpack.io/#M-Foundry/MMixedMarkdownLatex)
 
 ## ✨ 特性
 
@@ -25,13 +25,37 @@ MMixedMarkdown LaTeX（M3L）是一个面向 Android Jetpack Compose 的 Markdow
 
 ## 🚀 快速开始
 
-在 MChat 根目录运行：
+### 从 JitPack 使用
+
+项目已配置为可由 JitPack 构建。目标项目在 `settings.gradle.kts` 中加入：
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+然后在模块的 `build.gradle.kts` 中加入：
+
+```kotlin
+dependencies {
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.0-beta")
+}
+```
+
+### 本地构建发行包
+
+在项目根目录运行：
 
 ```shell
 ./gradlew bundleRenderer
 ```
 
-Windows 使用 `gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.0.0-beta.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。
+Windows 使用 `gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.0.0-beta.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
 
 解压后，在目标项目的 `settings.gradle.kts` 添加：
 

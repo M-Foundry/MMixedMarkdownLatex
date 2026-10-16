@@ -12,7 +12,7 @@ MMixedMarkdown LaTeX（M3L） is an Android Jetpack Compose renderer for Markdow
 ![Compose BOM](https://img.shields.io/badge/Compose%20BOM-2024.12.01-4285F4?style=flat-square\&logo=jetpackcompose\&logoColor=white)
 ![Android API](https://img.shields.io/badge/Android%20API-26%2B-3DDC84?style=flat-square\&logo=android\&logoColor=white)
 
-Current version: `1.0.0-beta`
+[![JitPack](https://jitpack.io/v/M-Foundry/MMixedMarkdownLatex.svg)](https://jitpack.io/#M-Foundry/MMixedMarkdownLatex)
 
 ## ✨ Features
 
@@ -24,6 +24,30 @@ Current version: `1.0.0-beta`
 - Bundled grammars, formula fonts, and the LaTeX engine
 
 ## 🚀 Quick start
+
+### Use from JitPack
+
+The project is configured for JitPack. Add the repository to the consuming project's `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+Then add the dependency to the app or library module:
+
+```kotlin
+dependencies {
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.0-beta")
+}
+```
+
+### Build a local distribution
 
 Build the distribution from the MChat root:
 
@@ -37,7 +61,7 @@ On Windows:
 gradlew.bat bundleRenderer
 ```
 
-The generated `build/distributions/m3l-renderer-1.0.0-beta.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses.
+The generated `build/distributions/m3l-renderer-1.0.0-beta.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
 
 Add the unpacked repository to `settings.gradle.kts`, then add:
 
