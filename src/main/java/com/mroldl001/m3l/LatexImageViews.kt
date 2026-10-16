@@ -38,6 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.core.MarkwonTheme
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import kotlin.math.roundToInt
@@ -163,6 +164,10 @@ internal fun LatexInlineLine(
             .usePlugin(object : AbstractMarkwonPlugin() {
                 override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                     builder.linkResolver { _, link -> linkHandler?.invoke(link) }
+                }
+
+                override fun configureTheme(builder: MarkwonTheme.Builder) {
+                    builder.headingBreakHeight(0)
                 }
             })
             .build()

@@ -54,6 +54,7 @@ internal fun MarkdownText(
 
                 override fun configureTheme(builder: MarkwonTheme.Builder) {
                     builder.linkColor(linkColor.toArgb())
+                    builder.headingBreakHeight(0)
                 }
             })
             .build()

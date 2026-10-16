@@ -154,37 +154,44 @@ fun CodeBlockBody(
     }
 
     Box(modifier) {
-        Column(
-            modifier = if (fillHeight) {
-                Modifier.fillMaxSize()
-            } else {
-                Modifier.fillMaxWidth()
-            }.horizontalScroll(horizontalState)
+        Row(
+            modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
         ) {
-            highlightedLines.forEachIndexed { index, line ->
-                Row {
+            Column(
+                modifier = if (fillHeight) Modifier.fillMaxHeight() else Modifier.wrapContentHeight()
+            ) {
+                highlightedLines.forEachIndexed { index, _ ->
                     BasicText(
                         text = (index + 1).toString().padStart(maxLineNumberWidth, ' '),
                         style = numberStyle,
-                        modifier = Modifier
-                            .width(numberColumnWidth(maxLineNumberWidth))
-                            .alignByBaseline()
-                    )
-                    BasicText(
-                        text = line.ifEmpty { AnnotatedString(" ") },
-                        style = textStyle,
-                        modifier = Modifier
-                            .padding(start = CODE_GUTTER)
-                            .alignByBaseline()
+                        modifier = Modifier.width(numberColumnWidth(maxLineNumberWidth))
                     )
                 }
+                if (fillHeight) {
+                    Spacer(Modifier.weight(1f))
+                }
             }
-            if (fillHeight) {
-                Box(
+
+            Box(
+                modifier = if (fillHeight) Modifier.weight(1f).fillMaxHeight()
+                else Modifier.weight(1f)
+            ) {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
+                        .horizontalScroll(horizontalState)
+                        .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier.wrapContentHeight())
+                ) {
+                    highlightedLines.forEach { line ->
+                        BasicText(
+                            text = line.ifEmpty { AnnotatedString(" ") },
+                            style = textStyle,
+                            modifier = Modifier.padding(start = CODE_GUTTER)
+                        )
+                    }
+                    if (fillHeight) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
             }
         }
 
@@ -203,7 +210,7 @@ fun CodeBlockBody(
 }
 
 private fun numberColumnWidth(digits: Int): Dp =
-    (CODE_FONT_SIZE.value * 0.62f * digits).dp + CODE_GUTTER
+    (CODE_FONT_SIZE.value * 0.62f * digits).dp
 
 private fun codeLineStyle(color: Color) = TextStyle(
     color = color,
