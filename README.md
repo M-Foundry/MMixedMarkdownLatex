@@ -204,4 +204,4 @@ CompositionLocalProvider(
 
 ## 📄 许可证
 
-项目许可证见根目录 `LICENSE`，LaTeX 引擎许可证见 `latexlibrary/LICENSE`。
+项目许可证见根目录 `LICENSE`

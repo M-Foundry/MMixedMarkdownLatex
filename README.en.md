@@ -159,4 +159,4 @@ Code fence labels are normalized (`py` to `python`, `js` to `javascript`, `kt` t
 
 ## 📄 License
 
-See `LICENSE` in the project root and `latexlibrary/LICENSE` for the LaTeX engine.
+See `LICENSE` in the project root
