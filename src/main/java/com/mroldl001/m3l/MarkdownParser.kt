@@ -198,7 +198,13 @@ fun splitContent(text: String, allowUnclosedCodeFence: Boolean = false): List<Co
 
     fun appendMarkdown(end: Int) {
         if (end <= plainStart) return
-        val markdown = text.substring(plainStart, end)
+        // Blank lines between independently rendered blocks must not become
+        // their own TextView (or add height on top of block padding).
+        val lines = text.substring(plainStart, end).lines()
+        val firstContentLine = lines.indexOfFirst { it.isNotBlank() }
+        if (firstContentLine < 0) return
+        val lastContentLine = lines.indexOfLast { it.isNotBlank() }
+        val markdown = lines.subList(firstContentLine, lastContentLine + 1).joinToString("\n")
         var lineStart = 0
         var index = 0
         while (index <= markdown.length) {
@@ -242,7 +248,15 @@ fun splitContent(text: String, allowUnclosedCodeFence: Boolean = false): List<Co
             continue
         }
 
-        if (isStandaloneHorizontalRule(text, cursor, openingLine)) {
+        val followsRenderedBlock = when (segments.lastOrNull()?.type) {
+            ContentType.CODE_BLOCK, ContentType.TABLE, ContentType.LATEX_BLOCK,
+            ContentType.QUOTE, ContentType.HR -> true
+            else -> false
+        }
+        if (isHorizontalRule(openingLine) &&
+            (isStandaloneHorizontalRule(text, cursor, openingLine) ||
+                (followsRenderedBlock && text.substring(plainStart, cursor).isBlank()))
+        ) {
             appendMarkdown(cursor)
             segments += ContentSegment(ContentType.HR, "")
             cursor = nextLineStart(text, openingEnd)

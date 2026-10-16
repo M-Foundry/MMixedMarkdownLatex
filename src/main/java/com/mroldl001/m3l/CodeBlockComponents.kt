@@ -185,7 +185,7 @@ fun CodeBlockBody(
                         BasicText(
                             text = line.ifEmpty { AnnotatedString(" ") },
                             style = textStyle,
-                            modifier = Modifier.padding(start = CODE_GUTTER)
+                        modifier = Modifier
                         )
                     }
                     if (fillHeight) {
@@ -210,7 +210,7 @@ fun CodeBlockBody(
 }
 
 private fun numberColumnWidth(digits: Int): Dp =
-    (CODE_FONT_SIZE.value * 0.62f * digits).dp
+    (CODE_FONT_SIZE.value * 0.62f * digits).dp + CODE_GUTTER
 
 private fun codeLineStyle(color: Color) = TextStyle(
     color = color,

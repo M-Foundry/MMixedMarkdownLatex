@@ -64,4 +64,44 @@ class MarkdownParserTest {
         assertEquals(ContentType.QUOTE, segments.single().type)
         assertEquals("Hello", segments.single().content.trim())
     }
+
+    @Test
+    fun blankLinesBetweenTablesRulesAndCodeDoNotBecomeViews() {
+        val table = "| Name | Value |\n| --- | --- |\n| A | 1 |\n"
+        val code = "```kotlin\nprintln(1)\n```"
+        val input = "$table\n---\n\n$code\n\n---\n\n$table"
+        assertEquals(
+            listOf(
+                ContentSegment(ContentType.TABLE, table),
+                ContentSegment(ContentType.HR, ""),
+                ContentSegment(ContentType.CODE_BLOCK, "println(1)", "kotlin"),
+                ContentSegment(ContentType.HR, ""),
+                ContentSegment(ContentType.TABLE, table)
+            ),
+            splitContent(input)
+        )
+    }
+
+    @Test
+    fun paragraphSpacingInsideMarkdownIsPreserved() {
+        assertEquals(
+            listOf(ContentSegment(ContentType.MARKDOWN, "First\n\nSecond")),
+            splitContent("\n\nFirst\n\nSecond\n\n")
+        )
+    }
+
+    @Test
+    fun ruleImmediatelyAfterRenderedBlockIsNotPassedToMarkwon() {
+        assertEquals(
+            listOf(
+                ContentSegment(ContentType.CODE_BLOCK, "println(1)", "kotlin"),
+                ContentSegment(ContentType.HR, "")
+            ),
+            splitContent("```kotlin\nprintln(1)\n```\n---")
+        )
+        assertEquals(
+            listOf(ContentSegment(ContentType.MARKDOWN, "Title\n---")),
+            splitContent("Title\n---")
+        )
+    }
 }
