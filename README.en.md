@@ -69,8 +69,6 @@ Add the unpacked repository to `settings.gradle.kts`, then add:
 implementation("com.mroldl001:mmixedmarkdownlatex:1.0.0-beta")
 ```
 
-The LaTeX engine and the other renderer dependencies are resolved transitively. Keep the whole unpacked Maven repository; copying only the AAR does not include Markwon, TextMate, or the LaTeX engine.
-
 ## 📖 Basic usage
 
 ```kotlin

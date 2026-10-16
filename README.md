@@ -76,8 +76,6 @@ dependencyResolutionManagement {
 implementation("com.mroldl001:mmixedmarkdownlatex:1.0.0-beta")
 ```
 
-LaTeX 引擎会作为传递依赖解析。请使用整个本地 Maven 仓库，不要只复制 AAR，否则 Markwon、TextMate 和 LaTeX 引擎等依赖不会自动带上。
-
 ## 📖 基本用法
 
 ```kotlin

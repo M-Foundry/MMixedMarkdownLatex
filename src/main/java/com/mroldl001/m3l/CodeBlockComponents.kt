@@ -77,13 +77,14 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
         language,
         darkCodeBlock
     ) {
-        value = withContext(Dispatchers.Default) {
+        val highlighted = withContext(Dispatchers.Default) {
             try {
                 highlightCodeLines(codeLines, language, darkCodeBlock, appContext)
             } catch (error: Throwable) {
                 codeLines.map { AnnotatedString(it) }
             }
         }
+        value = highlighted
     }
 
     val header = LocalCodeBlockHeader.current
