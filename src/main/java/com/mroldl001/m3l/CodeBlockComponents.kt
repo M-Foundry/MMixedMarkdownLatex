@@ -56,6 +56,7 @@ data class CodeBlockContent(
 )
 
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Color.Black) {
     val context = LocalContext.current
     val darkCodeBlock = LocalCodeBlockDark.current
