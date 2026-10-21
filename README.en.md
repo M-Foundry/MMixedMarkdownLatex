@@ -43,7 +43,7 @@ Then add the dependency to the app or library module:
 
 ```kotlin
 dependencies {
-    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.0-beta")
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.1")
 }
 ```
 
@@ -66,7 +66,7 @@ The generated `build/distributions/m3l-renderer-1.0.0-beta.zip` contains a local
 Add the unpacked repository to `settings.gradle.kts`, then add:
 
 ```kotlin
-implementation("com.mroldl001:mmixedmarkdownlatex:1.0.0-beta")
+implementation("com.mroldl001:mmixedmarkdownlatex:1.0.1")
 ```
 
 ## 📖 Basic usage

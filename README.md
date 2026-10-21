@@ -43,7 +43,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.0-beta")
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.1")
 }
 ```
 
@@ -73,7 +73,7 @@ dependencyResolutionManagement {
 然后添加依赖：
 
 ```kotlin
-implementation("com.mroldl001:mmixedmarkdownlatex:1.0.0-beta")
+implementation("com.mroldl001:mmixedmarkdownlatex:1.0.1")
 ```
 
 ## 📖 基本用法

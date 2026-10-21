@@ -22,7 +22,7 @@ tasks.register("verifyRendererDependencies") {
 }
 
 group = "com.mroldl001"
-version = "1.0.0-beta"
+version = "1.0.1"
 
 android {
     namespace = "com.mroldl001.m3l"
