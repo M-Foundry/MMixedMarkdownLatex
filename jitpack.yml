@@ -1,10 +1,5 @@
 jdk:
   - openjdk17
 
-before_install:
-  - sdk install gradle 8.10.2
-  - sdk use gradle 8.10.2
-
 install:
-  - gradle wrapper --gradle-version 8.10.2
-  - ./gradlew clean build publishToMavenLocal --no-daemon
+  - bash ./gradlew clean assembleRelease publishToMavenLocal --no-daemon

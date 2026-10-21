@@ -22,8 +22,7 @@ import kotlin.math.min
 internal fun applyInlineCodeStyle(
     textView: TextView,
     backgroundColor: Int,
-    textColor: Int,
-    sourceMarkdown: String? = null
+    textColor: Int
 ) {
     val rendered = textView.text as? Spanned ?: return
     val codeSpans = rendered.getSpans(0, rendered.length, CodeSpan::class.java)
@@ -41,38 +40,12 @@ internal fun applyInlineCodeStyle(
         }
     }
 
-    // Markwon's table extension can render cell contents without retaining
-    // CodeSpan. Recover those inline-code ranges from the original markdown
-    // so table cells receive the same styling as normal paragraphs.
-    val inlineCodeContents = sourceMarkdown
-        ?.let { INLINE_CODE_PATTERN.findAll(it).map { match -> match.groupValues[1] }.toList() }
-        .orEmpty()
-    inlineCodeContents.forEach { code ->
-        var searchStart = 0
-        while (code.isNotEmpty()) {
-            val start = styled.toString().indexOf(code, searchStart)
-            if (start < 0) break
-            val end = start + code.length
-            val alreadyStyled = styled.getSpans(start, end, RoundedInlineCodeSpan::class.java).isNotEmpty()
-            if (!alreadyStyled) {
-                styled.setSpan(
-                    RoundedInlineCodeSpan(textView, start, end, backgroundColor, textColor),
-                    start,
-                    end,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            searchStart = end
-        }
-    }
     if (styled !== rendered) {
         textView.text = styled
     } else {
         textView.invalidate()
     }
 }
-
-private val INLINE_CODE_PATTERN = Regex("(?<!`)`([^`\\n]+)`(?!`)")
 
 /** Keep real text spans so long code can wrap and selection/copy retains the original text. */
 private class RoundedInlineCodeSpan(

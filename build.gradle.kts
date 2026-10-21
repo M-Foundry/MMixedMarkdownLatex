@@ -74,8 +74,6 @@ dependencies {
     implementation("io.coil-kt:coil:2.7.0")
     implementation("io.github.ivan-magda:kotlin-textmate-core:0.3.0")
     implementation("com.github.sixgodIT:JLaTexMath-andriod:-SNAPSHOT")
-
-    testImplementation("junit:junit:4.13.2")
 }
 
 publishing {
@@ -97,4 +95,16 @@ publishing {
             }
         }
     }
+}
+
+tasks.register<Zip>("bundleRenderer") {
+    group = "distribution"
+    description = "Packages the renderer Maven repository and license for local use."
+    dependsOn("publishReleasePublicationToRendererRepository")
+    archiveFileName.set("m3l-renderer-${project.version}.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    from(layout.buildDirectory.dir("renderer-repository"))
+    from("LICENSE")
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }

@@ -20,8 +20,6 @@ data class ContentSegment(
 
 private data class MarkdownFence(val marker: Char, val length: Int, val info: String?)
 
-private data class InlineMathPart(val content: String, val isMath: Boolean)
-
 private fun markdownFenceAt(line: String): MarkdownFence? {
     val indent = line.takeWhile { it == ' ' }.length
     if (indent > 3) return null
@@ -112,52 +110,6 @@ private fun isEscaped(text: String, index: Int): Boolean {
     return slashCount % 2 != 0
 }
 
-private fun parseInlineMath(line: String): List<InlineMathPart>? {
-    val parts = mutableListOf<InlineMathPart>()
-    var plainStart = 0
-    var cursor = 0
-    var foundMath = false
-
-    fun appendText(end: Int) {
-        if (end > plainStart) parts += InlineMathPart(line.substring(plainStart, end), false)
-    }
-
-    while (cursor < line.length) {
-        if (line[cursor] == '`') {
-            val ticks = line.substring(cursor).takeWhile { it == '`' }.length
-            val closing = line.indexOf("`".repeat(ticks), cursor + ticks)
-            cursor = if (closing >= 0) closing + ticks else line.length
-            continue
-        }
-
-        val delimiter = when {
-            line.startsWith("\\(", cursor) && !isEscaped(line, cursor) -> "\\(" to "\\)"
-            line[cursor] == '$' && !line.startsWith("$$", cursor) && !isEscaped(line, cursor) -> "$" to "$"
-            else -> null
-        }
-        if (delimiter == null) {
-            cursor++
-            continue
-        }
-
-        val closing = findUnescaped(line, delimiter.second, cursor + delimiter.first.length)
-        if (closing < 0) {
-            cursor += delimiter.first.length
-            continue
-        }
-        appendText(cursor)
-        parts += InlineMathPart(
-            line.substring(cursor + delimiter.first.length, closing),
-            true
-        )
-        foundMath = true
-        cursor = closing + delimiter.second.length
-        plainStart = cursor
-    }
-    appendText(line.length)
-    return parts.takeIf { foundMath }
-}
-
 /**
  * Some model responses escape Markdown emphasis delimiters (for example
  * `\\*\\*重点\\*\\*`). Treat paired escaped delimiters as emphasis while leaving
@@ -205,24 +157,7 @@ fun splitContent(text: String, allowUnclosedCodeFence: Boolean = false): List<Co
         if (firstContentLine < 0) return
         val lastContentLine = lines.indexOfLast { it.isNotBlank() }
         val markdown = lines.subList(firstContentLine, lastContentLine + 1).joinToString("\n")
-        var lineStart = 0
-        var index = 0
-        while (index <= markdown.length) {
-            val lineEnd = markdown.indexOf('\n', index).takeIf { it >= 0 } ?: markdown.length
-            val line = markdown.substring(index, lineEnd).removeSuffix("\r")
-            if (parseInlineMath(line) != null) {
-                if (index > lineStart) {
-                    segments += ContentSegment(ContentType.MARKDOWN, markdown.substring(lineStart, index))
-                }
-                segments += ContentSegment(ContentType.LATEX_INLINE, line)
-                lineStart = if (lineEnd < markdown.length) lineEnd + 1 else lineEnd
-            }
-            if (lineEnd >= markdown.length) break
-            index = lineEnd + 1
-        }
-        if (lineStart < markdown.length) {
-            segments += ContentSegment(ContentType.MARKDOWN, markdown.substring(lineStart))
-        }
+        segments += ContentSegment(ContentType.MARKDOWN, markdown)
     }
 
     while (cursor < text.length) {
@@ -376,8 +311,8 @@ private val TABLE_DELIMITER_CELL = Regex("^:?-{3,}:?$")
 
 internal fun isMarkdownTableDelimiter(line: String): Boolean {
     if ('|' !in line) return false
-    val cells = line.trim().trim('|').split('|').map { it.trim() }
-    return cells.all { it.matches(TABLE_DELIMITER_CELL) }
+    val cells = markdownTableCells(line)
+    return cells.isNotEmpty() && cells.all { it.matches(TABLE_DELIMITER_CELL) }
 }
 
 private fun markdownLineStart(text: String, lineIndex: Int): Int {
@@ -418,28 +353,34 @@ private fun unclosedMathStart(line: String): Int? {
     return null
 }
 
-private fun hasUnclosedCodeFence(text: String): Boolean {
+private fun unclosedCodeFenceStart(text: String): Int? {
     var activeFence: MarkdownFence? = null
+    var activeStart: Int? = null
+    var offset = 0
     text.lineSequence().forEach { rawLine ->
         val line = rawLine.removeSuffix("\r")
         val currentFence = activeFence
         if (currentFence == null) {
-            markdownFenceAt(line)?.let { activeFence = it }
+            markdownFenceAt(line)?.let {
+                activeFence = it
+                activeStart = offset
+            }
         } else if (isClosingFence(line, currentFence)) {
             activeFence = null
+            activeStart = null
         }
+        offset += rawLine.length + 1
     }
-    return activeFence != null
+    return activeStart
 }
 
 internal fun stabilizeStreamingMarkdown(text: String): String {
+    unclosedCodeFenceStart(text)?.let { return text.substring(0, it) }
     val lastLineBreak = text.lastIndexOf('\n')
     val partialLineStart = lastLineBreak + 1
     val partialLine = text.substring(partialLineStart).removeSuffix("\r")
-    if (!hasUnclosedCodeFence(text)) {
-        unclosedMathStart(partialLine)?.let { mathStart ->
-            return text.substring(0, partialLineStart + mathStart)
-        }
+    unclosedMathStart(partialLine)?.let { mathStart ->
+        return text.substring(0, partialLineStart + mathStart)
     }
     if (lastLineBreak < 0) return text
 
@@ -473,32 +414,87 @@ internal fun stabilizeStreamingMarkdown(text: String): String {
     return text
 }
 
-internal fun normalizeHtmlToMarkdown(html: String): String = processBlockquotes(html)
+internal fun normalizeHtmlToMarkdown(html: String): String {
+    var prefix = "\uE000M3L"
+    while (prefix in html) prefix += "X"
+    val literals = mutableListOf<Pair<String, String>>()
+    val protected = StringBuilder(html.length)
+    var cursor = 0
+    while (cursor < html.length) {
+        var end = cursor
+        if (cursor == 0 || html[cursor - 1] == '\n') {
+            val currentEnd = lineEnd(html, cursor)
+            val line = html.substring(cursor, currentEnd).removeSuffix("\r")
+            val fence = markdownFenceAt(line)
+            if (fence != null) {
+                end = nextLineStart(html, currentEnd)
+                while (end < html.length) {
+                    val candidateEnd = lineEnd(html, end)
+                    val closing = isClosingFence(html.substring(end, candidateEnd).removeSuffix("\r"), fence)
+                    end = nextLineStart(html, candidateEnd)
+                    if (closing) break
+                }
+            } else if (line.startsWith("    ") || line.startsWith('\t')) {
+                end = currentEnd
+            }
+        }
+        if (end == cursor && html[cursor] == '`' && !isEscaped(html, cursor)) {
+            val ticks = html.substring(cursor).takeWhile { it == '`' }.length
+            var search = cursor + ticks
+            while (search < html.length) {
+                val found = html.indexOf('`', search)
+                if (found < 0) break
+                val length = html.substring(found).takeWhile { it == '`' }.length
+                if (length == ticks) {
+                    end = found + ticks
+                    break
+                }
+                search = found + length
+            }
+        }
+        if (end == cursor && !isEscaped(html, cursor)) {
+            val delimiter = when {
+                html.startsWith("$$", cursor) -> "$$" to "$$"
+                html.startsWith("\\[", cursor) -> "\\[" to "\\]"
+                html.startsWith("\\(", cursor) -> "\\(" to "\\)"
+                html[cursor] == '$' -> "$" to "$"
+                else -> null
+            }
+            if (delimiter != null) {
+                val closing = findUnescaped(html, delimiter.second, cursor + delimiter.first.length)
+                val multiline = delimiter.first == "$$" || delimiter.first == "\\["
+                if (closing >= 0 && (multiline || closing < lineEnd(html, cursor))) {
+                    end = closing + delimiter.second.length
+                }
+            }
+        }
+        if (end > cursor) {
+            html.substring(cursor, end).split('\n').forEachIndexed { index, literal ->
+                if (index > 0) protected.append('\n')
+                val token = "$prefix${literals.size}\uE001"
+                literals += token to literal
+                protected.append(token)
+            }
+            cursor = end
+        } else {
+            protected.append(html[cursor++])
+        }
+    }
+    var normalized = processBlockquotes(protected.toString())
+    literals.forEach { (token, literal) -> normalized = normalized.replace(token, literal) }
+    return normalized
+}
 
 private val htmlBrRegex = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
-private val htmlPOpenRegex = Regex("<p[^>]*>", RegexOption.IGNORE_CASE)
+private val htmlPOpenRegex = Regex("<p(?:\\s[^>]*)?>", RegexOption.IGNORE_CASE)
 private val htmlPCloseRegex = Regex("</p>", RegexOption.IGNORE_CASE)
-private val htmlAllowedTagRegex = Regex("<(?!/?(?:b|strong|i|em|u|s|del|mark|span|br)\\b)[^>]+>", RegexOption.IGNORE_CASE)
-private val htmlEntityRegex = Regex("&(lt|gt|amp|quot|apos|nbsp|#39|#x27);", RegexOption.IGNORE_CASE)
 private val htmlBlankRunRegex = Regex("\n{3,}")
-
-private fun decodeHtmlEntity(match: MatchResult): String = when (match.value.lowercase()) {
-    "&lt;" -> "<"
-    "&gt;" -> ">"
-    "&amp;" -> "&"
-    "&quot;" -> "\""
-    "&apos;", "&#39;", "&#x27;" -> "'"
-    "&nbsp;" -> "\u00A0"
-    else -> match.value
-}
 
 private fun htmlInlineToMarkdown(html: String): String {
     return html
         .replace(htmlBrRegex, "\n")
         .replace(htmlPOpenRegex, "")
         .replace(htmlPCloseRegex, "\n\n")
-        .replace(htmlAllowedTagRegex, "")
-        .replace(htmlEntityRegex, ::decodeHtmlEntity)
         .replace(htmlBlankRunRegex, "\n\n")
 }
 
@@ -539,28 +535,8 @@ private fun extractBlockquoteContent(html: String, startAt: Int): Pair<String, I
     return html.substring(startAt) to html.length
 }
 
-private fun normalizeTagNewlines(html: String): String {
-    val sb = StringBuilder(html.length)
-    var inTag = false
-    var i = 0
-    while (i < html.length) {
-        val c = html[i]
-        if (
-            c == '<' &&
-            i + 1 < html.length &&
-            html[i + 1].let { it == '/' || it == '!' || it == '?' || it.isLetter() }
-        ) {
-            inTag = true
-        }
-        sb.append(if (inTag && (c == '\n' || c == '\r')) ' ' else c)
-        if (c == '>') inTag = false
-        i++
-    }
-    return sb.toString()
-}
-
 private fun processBlockquotes(html: String, level: Int = 0): String {
-    val normalized = normalizeTagNewlines(html)
+    val normalized = html
     val sb = StringBuilder()
     var i = 0
 

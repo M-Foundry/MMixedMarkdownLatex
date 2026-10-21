@@ -1,10 +1,12 @@
 package com.mroldl001.m3l
 
 import android.text.method.LinkMovementMethod
+import android.text.Layout
 import android.util.TypedValue
 import android.widget.TextView
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -12,6 +14,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
@@ -33,13 +38,22 @@ internal fun MarkdownText(
     textSelectionColors: TextSelectionColors,
     style: TextStyle,
     isTextSelectable: Boolean,
-    afterSetMarkdown: (TextView) -> Unit
+    afterSetMarkdown: (TextView) -> Unit,
+    onWidthMeasured: ((Float) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val linkHandler = LocalMarkdownLinkHandler.current
     val density = LocalDensity.current
     val textSizePx = with(density) { style.fontSize.toPx() }
     val lineHeightPx = with(density) { style.lineHeight.toPx() }
+    val tokenized = remember(markdown) { tokenizeInlineLatex(markdown) }
+    val latexSizePx = with(density) { 18.sp.toPx() }
+    val results by rememberLatexRenderResults(
+        context,
+        tokenized.formulas.map { it.latex },
+        style.color.toArgb(),
+        latexSizePx
+    )
     val markwon = remember(context, linkColor, linkifyMask, linkHandler) {
         Markwon.builder(context)
             .usePlugin(StrikethroughPlugin.create())
@@ -59,6 +73,12 @@ internal fun MarkdownText(
             })
             .build()
     }
+    val minVerticalPaddingPx = with(density) { 2.dp.roundToPx() }
+    val spanned = remember(markwon, tokenized, results, minVerticalPaddingPx) {
+        replaceInlineLatex(
+            markwon.toMarkdown(normalizeEscapedEmphasis(tokenized.markdown)), tokenized, results, minVerticalPaddingPx
+        )
+    }
     AndroidView(
         modifier = modifier,
         factory = { viewContext ->
@@ -75,11 +95,19 @@ internal fun MarkdownText(
             view.highlightColor = textSelectionColors.backgroundColor.toArgb()
             view.setTextIsSelectable(isTextSelectable)
             view.movementMethod = LinkMovementMethod.getInstance()
-            if (view.tag != (markdown to markwon)) {
-                markwon.setMarkdown(view, markdown)
-                view.tag = markdown to markwon
+            view.textAlignment = when (style.textAlign) {
+                TextAlign.Center -> android.view.View.TEXT_ALIGNMENT_CENTER
+                TextAlign.End, TextAlign.Right -> android.view.View.TEXT_ALIGNMENT_TEXT_END
+                else -> android.view.View.TEXT_ALIGNMENT_TEXT_START
+            }
+            if (view.tag !== spanned) {
+                markwon.setParsedMarkdown(view, spanned)
+                view.tag = spanned
             }
             afterSetMarkdown(view)
+            if (results.any { it != null }) {
+                onWidthMeasured?.invoke(Layout.getDesiredWidth(view.text, view.paint) / density.density)
+            }
         }
     )
 }

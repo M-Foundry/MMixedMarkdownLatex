@@ -278,7 +278,9 @@
     },
     {
       "captures": {
-        "1": "keyword.functions.data.stata.test"
+        "1": {
+          "name": "keyword.functions.data.stata.test"
+        }
       },
       "match": "\\b(form(at|a)?)\\s*([\\w&&[^0-9]]\\w{0,31})*\\s*(%)(-)?(0)?([0-9]+)(.)([0-9]+)(e|f|g)(c)?"
     },

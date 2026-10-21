@@ -1,6 +1,7 @@
 package com.mroldl001.m3l
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Bitmap
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -22,7 +23,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,14 +44,42 @@ import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.core.MarkwonTheme
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import java.util.UUID
 import kotlin.math.roundToInt
 
 private const val LatexTextSizeSp = 18f
 
-private data class InlineFormula(
+internal data class InlineFormula(
     val token: String,
     val latex: String
 )
+
+internal data class TokenizedInlineLatex(
+    val markdown: String,
+    val formulas: List<InlineFormula>
+)
+
+@Composable
+internal fun rememberLatexRenderResults(
+    context: Context,
+    formulas: List<String>,
+    textColor: Int,
+    textSizePx: Float,
+    displayMode: Boolean = false
+): State<List<LatexRenderResult?>> = key(
+    context,
+    formulas,
+    textColor,
+    textSizePx,
+    displayMode,
+    context.resources.displayMetrics.density
+) {
+    produceState(initialValue = List<LatexRenderResult?>(formulas.size) { null }) {
+        value = formulas.map { formula ->
+            LatexBitmapRenderer.render(context, formula, textColor, textSizePx, displayMode)
+        }
+    }
+}
 
 @Composable
 @SuppressLint("ProduceStateDoesNotAssignValue")
@@ -62,15 +93,8 @@ internal fun LatexBlockImage(
     val context = LocalContext.current
     val density = LocalDensity.current
     val textSizePx = with(density) { LatexTextSizeSp.sp.toPx() }
-    val result by produceState<LatexRenderResult?>(null, latex, textColor, textSizePx) {
-        value = LatexBitmapRenderer.render(
-            context = context,
-            latex = latex,
-            textColor = textColor.toArgb(),
-            textSizePx = textSizePx,
-            displayMode = true
-        )
-    }
+    val results by rememberLatexRenderResults(context, listOf(latex), textColor.toArgb(), textSizePx, true)
+    val result = results.firstOrNull()
     LaunchedEffect(result) {
         result?.let {
             onWidthMeasured?.invoke(with(density) { it.bitmap.width.toDp().value })
@@ -136,22 +160,12 @@ internal fun LatexInlineLine(
     val latexTextSizePx = with(density) { LatexTextSizeSp.sp.toPx() }
     val colorArgb = textColor.toArgb()
     val tokenized = remember(line) { tokenizeInlineLatex(line) }
-    val results by produceState<List<LatexRenderResult?>>(
-        initialValue = List(tokenized.second.size) { null },
-        tokenized.first,
-        latexTextSizePx,
-        colorArgb
-    ) {
-        value = tokenized.second.map { formula ->
-            LatexBitmapRenderer.render(
-                context = context,
-                latex = formula.latex,
-                textColor = colorArgb,
-                textSizePx = latexTextSizePx,
-                displayMode = false
-            )
-        }
-    }
+    val results by rememberLatexRenderResults(
+        context,
+        tokenized.formulas.map { it.latex },
+        colorArgb,
+        latexTextSizePx
+    )
     LaunchedEffect(results) {
         val widest = results.filterNotNull().maxOfOrNull { it.bitmap.width } ?: 0
         if (widest > 0) {
@@ -174,24 +188,12 @@ internal fun LatexInlineLine(
     }
     val minInlineVerticalPaddingPx = with(density) { 2.dp.roundToPx() }
     val spanned = remember(tokenized, results, colorArgb, minInlineVerticalPaddingPx) {
-        val builder = SpannableStringBuilder(markwon.toMarkdown(tokenized.first))
-        tokenized.second.forEachIndexed { index, formula ->
-            val result = results.getOrNull(index)
-            val start = builder.indexOf(formula.token)
-            if (start < 0) return@forEachIndexed
-            if (result != null) {
-                builder.replace(start, start + formula.token.length, formula.latex)
-                builder.setSpan(
-                    LatexReplacementSpan(result, minInlineVerticalPaddingPx),
-                    start,
-                    start + formula.latex.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            } else {
-                builder.replace(start, start + formula.token.length, formula.latex)
-            }
-        }
-        builder
+        replaceInlineLatex(
+            markwon.toMarkdown(tokenized.markdown),
+            tokenized,
+            results,
+            minInlineVerticalPaddingPx
+        )
     }
 
     AndroidView(
@@ -216,48 +218,185 @@ internal fun LatexInlineLine(
     )
 }
 
-private fun tokenizeInlineLatex(line: String): Pair<String, List<InlineFormula>> {
-    val output = StringBuilder(line.length)
+internal fun tokenizeInlineLatex(markdown: String): TokenizedInlineLatex {
+    val output = StringBuilder(markdown.length)
     val formulas = mutableListOf<InlineFormula>()
+    var tokenPrefix = "\uE000LTX${UUID.randomUUID().toString().replace("-", "")}"
+    while (markdown.contains(tokenPrefix)) tokenPrefix += '\uE000'
     var cursor = 0
-    while (cursor < line.length) {
-        if (line[cursor] == '`') {
-            val ticks = line.substring(cursor).takeWhile { it == '`' }.length
-            val delimiter = "`".repeat(ticks)
-            val closing = line.indexOf(delimiter, cursor + ticks)
-            val end = if (closing >= 0) closing + ticks else line.length
-            output.append(line, cursor, end)
+    var bracketDepth = 0
+    while (cursor < markdown.length) {
+        if (!isEscapedLatex(markdown, cursor)) {
+            val markupEnd = when (markdown[cursor]) {
+                '<' -> findRawMarkupEnd(markdown, cursor)
+                '[' -> {
+                    val definitionEnd = findReferenceDefinitionEnd(markdown, cursor)
+                    if (definitionEnd < 0) bracketDepth++
+                    definitionEnd
+                }
+                ']' -> if (bracketDepth > 0) {
+                    bracketDepth--
+                    if (markdown.getOrNull(cursor + 1) == '(') {
+                        findLinkDestinationEnd(markdown, cursor + 1)
+                    } else {
+                        -1
+                    }
+                } else {
+                    -1
+                }
+                else -> -1
+            }
+            if (markupEnd >= 0) {
+                output.append(markdown, cursor, markupEnd)
+                cursor = markupEnd
+                continue
+            }
+        }
+        if (markdown[cursor] == '`' && !isEscapedLatex(markdown, cursor)) {
+            var ticks = 1
+            while (cursor + ticks < markdown.length && markdown[cursor + ticks] == '`') ticks++
+            val closing = findClosingBackticks(markdown, cursor + ticks, ticks)
+            val end = if (closing >= 0) closing + ticks else cursor + ticks
+            output.append(markdown, cursor, end)
             cursor = end
             continue
         }
         val delimiter = when {
-            line.startsWith("\\(", cursor) && !isEscapedLatex(line, cursor) -> "\\)" to "\\("
-            line[cursor] == '$' && !line.startsWith("$$", cursor) && !isEscapedLatex(line, cursor) -> "$" to "$"
+            markdown.startsWith("\\(", cursor) && !isEscapedLatex(markdown, cursor) -> "\\)" to "\\("
+            markdown[cursor] == '$' && !markdown.startsWith("$$", cursor) &&
+                markdown.getOrNull(cursor - 1) != '$' && !isEscapedLatex(markdown, cursor) -> "$" to "$"
             else -> null
         }
         if (delimiter == null) {
-            output.append(line[cursor++])
+            output.append(markdown[cursor++])
             continue
         }
         val contentStart = cursor + delimiter.second.length
-        val closing = findLatexDelimiter(line, delimiter.first, contentStart)
+        val closing = findLatexDelimiter(markdown, delimiter.first, contentStart)
         if (closing < 0) {
-            output.append(line[cursor++])
+            output.append(markdown[cursor++])
             continue
         }
-        val token = "LTXINLINE${formulas.size}TOKEN"
-        formulas += InlineFormula(token, line.substring(contentStart, closing).trim())
+        val token = "$tokenPrefix${formulas.size}\uE001"
+        formulas += InlineFormula(token, markdown.substring(contentStart, closing).trim())
         output.append(token)
         cursor = closing + delimiter.first.length
     }
-    return output.toString() to formulas
+    return TokenizedInlineLatex(output.toString(), formulas)
+}
+
+internal fun replaceInlineLatex(
+    spanned: CharSequence,
+    tokenized: TokenizedInlineLatex,
+    results: List<LatexRenderResult?>,
+    minVerticalPaddingPx: Int
+): Spanned {
+    val builder = SpannableStringBuilder(spanned)
+    tokenized.formulas.forEachIndexed { index, formula ->
+        val start = builder.indexOf(formula.token)
+        if (start < 0) return@forEachIndexed
+        builder.replace(start, start + formula.token.length, formula.latex)
+        results.getOrNull(index)?.let { result ->
+            if (formula.latex.isNotEmpty()) {
+                builder.setSpan(
+                    LatexReplacementSpan(result, minVerticalPaddingPx),
+                    start,
+                    start + formula.latex.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+    }
+    return builder
+}
+
+private fun findClosingBackticks(text: String, start: Int, ticks: Int): Int {
+    var cursor = start
+    while (cursor < text.length) {
+        if (text[cursor] != '`') {
+            cursor++
+            continue
+        }
+        val runStart = cursor
+        while (cursor < text.length && text[cursor] == '`') cursor++
+        if (cursor - runStart == ticks) return runStart
+    }
+    return -1
+}
+
+private fun findRawMarkupEnd(text: String, start: Int): Int {
+    val next = text.getOrNull(start + 1) ?: return -1
+    if (!next.isLetter() && next != '/' && next != '!' && next != '?') return -1
+    if (text.startsWith("<!--", start)) {
+        val closing = text.indexOf("-->", start + 4)
+        return if (closing >= 0) closing + 3 else text.length
+    }
+    var quote: Char? = null
+    var cursor = start + 1
+    while (cursor < text.length) {
+        val character = text[cursor]
+        if (quote == null) {
+            if (character == '>') return cursor + 1
+            if (character == '\'' || character == '"') quote = character
+        } else if (character == quote) {
+            quote = null
+        }
+        cursor++
+    }
+    return -1
+}
+
+private fun findLinkDestinationEnd(text: String, start: Int): Int {
+    var depth = 1
+    var quote: Char? = null
+    var cursor = start + 1
+    while (cursor < text.length) {
+        val character = text[cursor]
+        if (isEscapedLatex(text, cursor)) {
+            cursor++
+            continue
+        }
+        if (quote != null) {
+            if (character == quote) quote = null
+        } else {
+            when (character) {
+                '\'', '"' -> if (depth == 1 && text[cursor - 1].isWhitespace()) quote = character
+                '(' -> depth++
+                ')' -> {
+                    depth--
+                    if (depth == 0) return cursor + 1
+                }
+                '<' -> {
+                    val closing = text.indexOf('>', cursor + 1)
+                    if (closing >= 0) cursor = closing
+                }
+            }
+        }
+        cursor++
+    }
+    return -1
+}
+
+private fun findReferenceDefinitionEnd(text: String, start: Int): Int {
+    val lineStart = text.lastIndexOf('\n', start - 1) + 1
+    if (start - lineStart > 3 || text.substring(lineStart, start).any { it != ' ' }) return -1
+    val lineEnd = text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length
+    var cursor = start + 1
+    while (cursor < lineEnd) {
+        if (text[cursor] == ']' && !isEscapedLatex(text, cursor)) {
+            return if (cursor > start + 1 && text.getOrNull(cursor + 1) == ':') lineEnd else -1
+        }
+        cursor++
+    }
+    return -1
 }
 
 private fun findLatexDelimiter(text: String, delimiter: String, start: Int): Int {
+    val lineEnd = text.indexOfAny(charArrayOf('\n', '\r'), start)
     var cursor = start
     while (cursor <= text.length - delimiter.length) {
         val index = text.indexOf(delimiter, cursor)
-        if (index < 0) return -1
+        if (index < 0 || (lineEnd >= 0 && index >= lineEnd)) return -1
         if (!isEscapedLatex(text, index)) return index
         cursor = index + delimiter.length
     }

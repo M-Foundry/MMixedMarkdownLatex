@@ -26,11 +26,11 @@
     },
     {
       "begin": "{{-?",
-      "captures": [
-        {
+      "captures": {
+        "0": {
           "name": "variable.entity.other.jinja.delimiter"
         }
-      ],
+      },
       "end": "-?}}",
       "name": "variable.meta.scope.jinja",
       "patterns": [
@@ -41,11 +41,11 @@
     },
     {
       "begin": "{%-?",
-      "captures": [
-        {
+      "captures": {
+        "0": {
           "name": "entity.other.jinja.delimiter.tag"
         }
-      ],
+      },
       "end": "-?%}",
       "name": "meta.scope.jinja.tag",
       "patterns": [
@@ -58,11 +58,11 @@
   "repository": {
     "comments": {
       "begin": "{#-?",
-      "captures": [
-        {
+      "captures": {
+        "0": {
           "name": "entity.other.jinja.delimiter.comment"
         }
-      ],
+      },
       "end": "-?#}",
       "name": "comment.block.jinja",
       "patterns": [
@@ -176,11 +176,11 @@
         },
         {
           "begin": "\\[",
-          "captures": [
-            {
+          "captures": {
+            "0": {
               "name": "punctuation.other.jinja"
             }
-          ],
+          },
           "end": "\\]",
           "patterns": [
             {
@@ -190,11 +190,11 @@
         },
         {
           "begin": "\\(",
-          "captures": [
-            {
+          "captures": {
+            "0": {
               "name": "punctuation.other.jinja"
             }
-          ],
+          },
           "end": "\\)",
           "patterns": [
             {
@@ -204,11 +204,11 @@
         },
         {
           "begin": "\\{",
-          "captures": [
-            {
+          "captures": {
+            "0": {
               "name": "punctuation.other.jinja"
             }
-          ],
+          },
           "end": "\\}",
           "patterns": [
             {
@@ -230,17 +230,17 @@
         },
         {
           "begin": "\"",
-          "beginCaptures": [
-            {
+          "beginCaptures": {
+            "0": {
               "name": "punctuation.definition.string.begin.jinja"
             }
-          ],
+          },
           "end": "\"",
-          "endCaptures": [
-            {
+          "endCaptures": {
+            "0": {
               "name": "punctuation.definition.string.end.jinja"
             }
-          ],
+          },
           "name": "string.quoted.double.jinja",
           "patterns": [
             {
@@ -250,17 +250,17 @@
         },
         {
           "begin": "'",
-          "beginCaptures": [
-            {
+          "beginCaptures": {
+            "0": {
               "name": "punctuation.definition.string.begin.jinja"
             }
-          ],
+          },
           "end": "'",
-          "endCaptures": [
-            {
+          "endCaptures": {
+            "0": {
               "name": "punctuation.definition.string.end.jinja"
             }
-          ],
+          },
           "name": "string.quoted.single.jinja",
           "patterns": [
             {
@@ -270,17 +270,17 @@
         },
         {
           "begin": "@/",
-          "beginCaptures": [
-            {
+          "beginCaptures": {
+            "0": {
               "name": "punctuation.definition.regexp.begin.jinja"
             }
-          ],
+          },
           "end": "/",
-          "endCaptures": [
-            {
+          "endCaptures": {
+            "0": {
               "name": "punctuation.definition.regexp.end.jinja"
             }
-          ],
+          },
           "name": "string.regexp.jinja",
           "patterns": [
             {

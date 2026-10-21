@@ -52,7 +52,9 @@
           "contentName": "variable.parameter.racket",
           "end": "\\|",
           "endCaptures": {
-            "0": "punctuation.verbatim.end.racket"
+            "0": {
+              "name": "punctuation.verbatim.end.racket"
+            }
           }
         },
         {
@@ -71,11 +73,15 @@
             {
               "begin": "\\|",
               "beginCaptures": {
-                "0": "punctuation.verbatim.begin.racket"
+                "0": {
+                  "name": "punctuation.verbatim.begin.racket"
+                }
               },
               "end": "\\|",
               "endCaptures": {
-                "0": "punctuation.verbatim.end.racket"
+                "0": {
+                  "name": "punctuation.verbatim.end.racket"
+                }
               }
             }
           ]
@@ -94,7 +100,9 @@
           "contentName": "variable.other.member.racket",
           "end": "\\|",
           "endCaptures": {
-            "0": "punctuation.verbatim.end.racket"
+            "0": {
+              "name": "punctuation.verbatim.end.racket"
+            }
           }
         },
         {
@@ -113,11 +121,15 @@
             {
               "begin": "\\|",
               "beginCaptures": {
-                "0": "punctuation.verbatim.begin.racket"
+                "0": {
+                  "name": "punctuation.verbatim.begin.racket"
+                }
               },
               "end": "\\|",
               "endCaptures": {
-                "0": "punctuation.verbatim.end.racket"
+                "0": {
+                  "name": "punctuation.verbatim.end.racket"
+                }
               }
             }
           ]
@@ -189,7 +201,9 @@
           "contentName": "entity.name.constant",
           "end": "\\|",
           "endCaptures": {
-            "0": "punctuation.verbatim.end.racket"
+            "0": {
+              "name": "punctuation.verbatim.end.racket"
+            }
           }
         },
         {
@@ -208,11 +222,15 @@
             {
               "begin": "\\|",
               "beginCaptures": {
-                "0": "punctuation.verbatim.begin.racket"
+                "0": {
+                  "name": "punctuation.verbatim.begin.racket"
+                }
               },
               "end": "\\|",
               "endCaptures": {
-                "0": "punctuation.verbatim.end.racket"
+                "0": {
+                  "name": "punctuation.verbatim.end.racket"
+                }
               }
             }
           ]
@@ -777,7 +795,9 @@
           "contentName": "entity.name.function.racket",
           "end": "\\|",
           "endCaptures": {
-            "0": "punctuation.verbatim.end.racket"
+            "0": {
+              "name": "punctuation.verbatim.end.racket"
+            }
           },
           "name": "entity.name.function.racket"
         },
@@ -797,11 +817,15 @@
             {
               "begin": "\\|",
               "beginCaptures": {
-                "0": "punctuation.verbatim.begin.racket"
+                "0": {
+                  "name": "punctuation.verbatim.begin.racket"
+                }
               },
               "end": "\\|",
               "endCaptures": {
-                "0": "punctuation.verbatim.end.racket"
+                "0": {
+                  "name": "punctuation.verbatim.end.racket"
+                }
               }
             }
           ]

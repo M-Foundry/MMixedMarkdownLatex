@@ -49,13 +49,13 @@ dependencies {
 
 ### 本地构建发行包
 
-在项目根目录运行：
+安装 JDK 17 和 Android SDK Platform 36，通过 `ANDROID_HOME` 或 `local.properties` 的 `sdk.dir` 指定 SDK 路径，然后在项目根目录运行（Wrapper 固定为 Gradle 8.13）：
 
 ```shell
-./gradlew bundleRenderer
+sh ./gradlew bundleRenderer
 ```
 
-Windows 使用 `gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.0.0-beta.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
+Windows 使用 `.\gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.0.0-beta.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
 
 解压后，在目标项目的 `settings.gradle.kts` 添加：
 
@@ -194,8 +194,7 @@ CompositionLocalProvider(
 ## ✅ 验证
 
 ```shell
-./gradlew :mmixedmarkdownlatex:verifyRendererDependencies
-./gradlew :mmixedmarkdownlatex:testDebugUnitTest
+sh ./gradlew compileDebugKotlin verifyRendererDependencies
 ```
 
 `verifyRendererDependencies` 会检查完整传递依赖图，阻止宿主 UI 依赖重新进入渲染器。

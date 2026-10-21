@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,8 +74,9 @@ fun MixedMarkdownLatex(
             delay(80)
         }
     }
-    val segments by remember(renderedText) {
-        derivedStateOf { splitContent(normalizeHtmlToMarkdown(renderedText), allowUnclosedCodeFence = true) }
+    val displayText = if (isStreaming) renderedText else text
+    val segments by remember(displayText) {
+        derivedStateOf { splitContent(normalizeHtmlToMarkdown(displayText), allowUnclosedCodeFence = true) }
     }
 
     Column(
@@ -83,9 +85,7 @@ fun MixedMarkdownLatex(
         segments.forEach { segment ->
             when (segment.type) {
                 ContentType.MARKDOWN -> {
-                    val markdown = remember(segment.content) {
-                        normalizeEscapedEmphasis(segment.content)
-                    }
+                    val markdown = segment.content
                     key(markdownLinkColor, textColor) {
                         MarkdownText(
                             markdown = markdown,
@@ -103,10 +103,10 @@ fun MixedMarkdownLatex(
                                 applyInlineCodeStyle(
                                     textView,
                                     inlineCodeBackground,
-                                    inlineCodeText,
-                                    markdown
+                                    inlineCodeText
                                 )
-                            }
+                            },
+                            onWidthMeasured = onLatexWidthMeasured
                         )
                     }
                 }
@@ -205,10 +205,7 @@ private fun MarkdownTableView(
             .map { it.removeSuffix("\r").trim() }
             .filter { it.isNotBlank() && !isMarkdownTableDelimiter(it) }
             .map { line ->
-                line.removePrefix("|")
-                    .removeSuffix("|")
-                    .split(UNESCAPED_PIPE)
-                    .map(String::trim)
+                markdownTableCells(line)
             }
             .toList()
     }
@@ -219,7 +216,10 @@ private fun MarkdownTableView(
     val borderColor = theme.outlineVariant.copy(alpha = 0.58f)
     val headerColor = theme.primary.copy(alpha = 0.12f)
     val maxColumnCount = rows.maxOf { it.size }
-    val renderedFormulaWidths = remember(markdown) { mutableStateMapOf<Int, Float>() }
+    val density = LocalDensity.current
+    val renderedFormulaWidths = remember(markdown, density.density, density.fontScale) {
+        mutableStateMapOf<Int, Float>()
+    }
     val columnWidths = List(maxColumnCount) { columnIndex ->
         val widestCell = rows.fold(0) { widest, row ->
             val cellText = stripLatexForTableWidth(row.getOrNull(columnIndex).orEmpty())
@@ -241,16 +241,17 @@ private fun MarkdownTableView(
     ) {
         Column(
             modifier = Modifier
-                .then(if (maxColumnCount == 1) Modifier.fillMaxWidth() else Modifier.width(tableWidth))
+                .width(tableWidth)
                 .clip(tableShape)
                 .border(BorderStroke(1.dp, borderColor), tableShape)
         ) {
             rows.forEachIndexed { rowIndex, cells ->
                 Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-                    cells.forEachIndexed { columnIndex, cell ->
+                    repeat(maxColumnCount) { columnIndex ->
+                        val cell = cells.getOrNull(columnIndex).orEmpty()
                         Box(
                             modifier = Modifier
-                                .then(if (maxColumnCount == 1) Modifier.fillMaxWidth() else Modifier.width(columnWidths[columnIndex]))
+                                .width(columnWidths[columnIndex])
                                 .fillMaxHeight()
                                 .background(if (rowIndex == 0) headerColor else theme.surface)
                                 .border(BorderStroke(0.5.dp, borderColor))
@@ -282,7 +283,6 @@ private val LATEX_BLOCK_DOLLAR = Regex("\\$\\$[\\s\\S]*?\\$\\$")
 private val LATEX_INLINE_DOLLAR = Regex("(?<!\\\\)\\$(?!\\$)[^$]*?\\$")
 private val LATEX_BRACKET = Regex("""\\\[[\s\S]*?\\\]""")
 private val LATEX_PAREN = Regex("""\\\([\s\S]*?\\\)""")
-private val UNESCAPED_PIPE = Regex("(?<!\\\\)\\|")
 
 internal fun stripLatexForTableWidth(cell: String): String {
     return cell

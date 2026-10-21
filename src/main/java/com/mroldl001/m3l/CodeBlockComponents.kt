@@ -72,13 +72,10 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
     val maxLineNumberWidth = lineCount.toString().length
     val appContext = context.applicationContext
     val codeHScroll = rememberScrollState()
-    val highlightedLines by produceState(
-        initialValue = codeLines.map { AnnotatedString(it) },
-        codeLines,
-        language,
-        darkCodeBlock
-    ) {
-        value = highlightCodeLinesAsync(codeLines, language, darkCodeBlock, appContext)
+    val highlightedLines by key(codeLines, language, darkCodeBlock) {
+        produceState(initialValue = codeLines.map { AnnotatedString(it) }) {
+            value = highlightCodeLinesAsync(codeLines, language, darkCodeBlock, appContext)
+        }
     }
 
     val header = LocalCodeBlockHeader.current
@@ -326,8 +323,8 @@ private fun normalizeCodeLanguage(label: String): String {
         "c#", "cs" -> "csharp"
         "golang" -> "go"
         "rs" -> "rust"
-        "sh", "zsh", "shell", "shellscript" -> "shellscript"
-        "bash", "pwsh", "ps1" -> "powershell"
+        "sh", "bash", "zsh", "shell", "shellscript" -> "shellscript"
+        "pwsh", "ps1" -> "powershell"
         "htm" -> "html"
         "yml" -> "yaml"
         "pl", "perl" -> "perl"
@@ -343,7 +340,7 @@ private fun normalizeCodeLanguage(label: String): String {
         "ml", "mli" -> "ocaml"
         "fs", "fsi", "fsx" -> "fsharp"
         "rkt" -> "racket"
-        "lisp", "cl", "el" -> "common-lisp"
+        "lisp", "cl" -> "common-lisp"
         "adb", "ads" -> "ada"
         "purs", "rescript" -> "purescript"
         "hx" -> "haxe"

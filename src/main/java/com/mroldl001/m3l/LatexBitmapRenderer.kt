@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.scilab.forge.jlatexmath.core.AjLatexMath
 import org.scilab.forge.jlatexmath.core.Insets
@@ -22,8 +23,16 @@ object LatexBitmapRenderer {
     private val initialized = AtomicBoolean(false)
     private val renderLock = Any()
 
-    private val cache = object : LruCache<String, LatexRenderResult>(MaxCacheBytes) {
-        override fun sizeOf(key: String, value: LatexRenderResult): Int = value.bitmap.byteCount
+    private data class CacheKey(
+        val latex: String,
+        val textColor: Int,
+        val textSizePx: Float,
+        val density: Float,
+        val displayMode: Boolean
+    )
+
+    private val cache = object : LruCache<CacheKey, LatexRenderResult>(MaxCacheBytes) {
+        override fun sizeOf(key: CacheKey, value: LatexRenderResult): Int = value.bitmap.byteCount
     }
 
     suspend fun render(
@@ -36,40 +45,50 @@ object LatexBitmapRenderer {
         val normalized = normalizeLatex(latex)
         if (normalized.isBlank()) return@withContext null
         val density = context.resources.displayMetrics.density
-        val key = "$textColor:${textSizePx.roundToInt()}:$displayMode:${normalized.hashCode()}:${normalized.length}"
+        if (!textSizePx.isFinite() || textSizePx <= 0f || !density.isFinite() || density <= 0f) {
+            return@withContext null
+        }
+        val key = CacheKey(normalized, textColor, textSizePx, density, displayMode)
         cache.get(key)?.let { return@withContext it }
 
         synchronized(renderLock) {
             cache.get(key)?.let { return@withContext it }
-            if (initialized.compareAndSet(false, true)) {
-                AjLatexMath.init(context.applicationContext)
+            try {
+                if (!initialized.get()) {
+                    AjLatexMath.init(context.applicationContext)
+                    initialized.set(true)
+                }
+                AjLatexMath.setColor(textColor)
+                val formula = TeXFormula(normalized)
+                val textSizeSp = textSizePx / density
+                val style = if (displayMode) TeXConstants.STYLE_DISPLAY else TeXConstants.STYLE_TEXT
+                val icon = formula.createTeXIcon(style, textSizeSp)
+                icon.setInsets(Insets(0, 0, 0, 0))
+
+                val sourceWidth = icon.iconWidth
+                val sourceHeight = icon.iconHeight
+                if (sourceWidth <= 0 || sourceHeight <= 0) return@withContext null
+                val scale = min(1f, MaxBitmapDimension / max(sourceWidth, sourceHeight).toFloat())
+                val bitmapWidth = max(1, (sourceWidth * scale).roundToInt())
+                val bitmapHeight = max(1, (sourceHeight * scale).roundToInt())
+                val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                canvas.drawColor(Color.TRANSPARENT)
+                canvas.scale(scale, scale)
+                icon.paintIcon(canvas, 0, 0)
+
+                val result = LatexRenderResult(
+                    bitmap = bitmap,
+                    baselinePx = ((icon.iconHeight - icon.iconDepth) * scale).roundToInt(),
+                    depthPx = (icon.iconDepth * scale).roundToInt()
+                )
+                cache.put(key, result)
+                result
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
             }
-            AjLatexMath.setColor(textColor)
-            val formula = runCatching { TeXFormula(normalized) }.getOrNull() ?: return@withContext null
-            val textSizeSp = textSizePx / density
-            val style = if (displayMode) TeXConstants.STYLE_DISPLAY else TeXConstants.STYLE_TEXT
-            val icon = formula.createTeXIcon(style, textSizeSp)
-            icon.setInsets(Insets(0, 0, 0, 0))
-
-            val sourceWidth = icon.iconWidth
-            val sourceHeight = icon.iconHeight
-            if (sourceWidth <= 0 || sourceHeight <= 0) return@withContext null
-            val scale = min(1f, MaxBitmapDimension / max(sourceWidth, sourceHeight).toFloat())
-            val bitmapWidth = max(1, (sourceWidth * scale).roundToInt())
-            val bitmapHeight = max(1, (sourceHeight * scale).roundToInt())
-            val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            canvas.drawColor(Color.TRANSPARENT)
-            canvas.scale(scale, scale)
-            icon.paintIcon(canvas, 0, 0)
-
-            val result = LatexRenderResult(
-                bitmap = bitmap,
-                baselinePx = ((icon.iconHeight - icon.iconDepth) * scale).roundToInt(),
-                depthPx = (icon.iconDepth * scale).roundToInt()
-            )
-            cache.put(key, result)
-            result
         }
     }
 

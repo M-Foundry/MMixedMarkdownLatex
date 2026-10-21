@@ -49,16 +49,16 @@ dependencies {
 
 ### Build a local distribution
 
-Build the distribution from the MChat root:
+Install JDK 17 and Android SDK Platform 36, and set the SDK path with `ANDROID_HOME` or `sdk.dir` in `local.properties`. The wrapper pins Gradle 8.13. Build the distribution from this project's root:
 
 ```shell
-./gradlew bundleRenderer
+sh ./gradlew bundleRenderer
 ```
 
 On Windows:
 
 ```shell
-gradlew.bat bundleRenderer
+.\gradlew.bat bundleRenderer
 ```
 
 The generated `build/distributions/m3l-renderer-1.0.0-beta.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
@@ -151,8 +151,7 @@ Code fence labels are normalized (`py` to `python`, `js` to `javascript`, `kt` t
 ## ✅ Verification
 
 ```shell
-./gradlew :mmixedmarkdownlatex:verifyRendererDependencies
-./gradlew :mmixedmarkdownlatex:testDebugUnitTest
+sh ./gradlew compileDebugKotlin verifyRendererDependencies
 ```
 
 ## 📄 License

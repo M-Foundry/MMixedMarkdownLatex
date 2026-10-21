@@ -1,6 +1,7 @@
 package com.mroldl001.m3l
 
 import android.content.Context
+import android.util.JsonReader
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import dev.textmate.grammar.Grammar
@@ -15,7 +16,6 @@ import dev.textmate.theme.Theme
 import dev.textmate.theme.ThemeReader
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -31,6 +31,7 @@ private object TextMateEngine {
     private val onigLib = JoniOnigLib()
     private val rawCache = LinkedHashMap<String, RawGrammar?>(16, 0.75f, true)
     private val grammars = LinkedHashMap<String, Grammar?>(16, 0.75f, true)
+    private var scopeLanguages: Map<String, String>? = null
 
     fun grammar(context: Context, language: String): Grammar? = lock.withLock {
         grammars[language]?.let { return@withLock it }
@@ -40,7 +41,7 @@ private object TextMateEngine {
             null
         } else {
             try {
-                Registry(singleGrammarSource(raw), onigLib).loadGrammar(scope)
+                Registry(assetGrammarSource(context.applicationContext, raw), onigLib).loadGrammar(scope)
             } catch (error: Throwable) {
                 null
             }
@@ -66,9 +67,35 @@ private object TextMateEngine {
         perLine
     }
 
-    private fun singleGrammarSource(raw: RawGrammar) = object : GrammarSource {
-        override fun loadRawGrammar(scopeName: String): RawGrammar? =
-            if (scopeName == raw.scopeName) raw else null
+    private fun assetGrammarSource(context: Context, raw: RawGrammar) = object : GrammarSource {
+        override fun loadRawGrammar(scopeName: String): RawGrammar? {
+            if (scopeName == raw.scopeName) return raw
+            val language = grammarLanguagesByScopeLocked(context)[scopeName] ?: return null
+            return rawGrammarLocked(context, language)
+        }
+    }
+
+    private fun grammarLanguagesByScopeLocked(context: Context): Map<String, String> {
+        scopeLanguages?.let { return it }
+        val indexed = linkedMapOf<String, String>()
+        context.assets.list(GRAMMAR_ASSET_DIR).orEmpty().sorted().forEach { file ->
+            if (!file.endsWith(".tmLanguage.json")) return@forEach
+            try {
+                JsonReader(context.assets.open("$GRAMMAR_ASSET_DIR/$file").reader(Charsets.UTF_8)).use { reader ->
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        if (reader.nextName() == "scopeName") {
+                            indexed.putIfAbsent(reader.nextString(), file.removeSuffix(".tmLanguage.json"))
+                            break
+                        }
+                        reader.skipValue()
+                    }
+                }
+            } catch (error: Exception) {
+                Unit
+            }
+        }
+        return indexed.also { scopeLanguages = it }
     }
 
     private fun rawGrammarLocked(context: Context, language: String): RawGrammar? {
