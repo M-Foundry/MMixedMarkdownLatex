@@ -156,4 +156,4 @@ sh ./gradlew compileDebugKotlin verifyRendererDependencies
 
 ## 📄 License
 
-See `LICENSE` in the project root
+This project is licensed under Apache-2.0. See `LICENSE` in the project root.

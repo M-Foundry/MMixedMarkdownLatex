@@ -201,4 +201,4 @@ sh ./gradlew compileDebugKotlin verifyRendererDependencies
 
 ## 📄 许可证
 
-项目许可证见根目录 `LICENSE`
+本项目使用 Apache-2.0 许可证，详见根目录 `LICENSE`

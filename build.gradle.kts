@@ -92,6 +92,13 @@ publishing {
             pom {
                 name = "MMixedMarkdownLatex"
                 description = "Mixed Markdown + LaTeX renderer library"
+                licenses {
+                    license {
+                        name = "Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0"
+                        distribution = "repo"
+                    }
+                }
             }
         }
     }
