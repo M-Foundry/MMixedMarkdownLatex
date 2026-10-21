@@ -18,7 +18,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.HorizontalAlignmentLine
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -29,8 +33,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import dev.textmate.theme.FontStyle as TextMateFontStyle
 import kotlinx.coroutines.Dispatchers
@@ -144,6 +151,9 @@ fun CodeBlockBody(
     val hBarActive by rememberScrollActivity(horizontalState)
     val numberStyle = codeLineStyle(numberColor)
     val textStyle = codeLineStyle(textColor)
+    val lineBaselines = remember(highlightedLines.size) {
+        List(highlightedLines.size) { HorizontalAlignmentLine { old, new -> minOf(old, new) } }
+    }
     val scrollbarThumb = if (!textColor.isDark()) {
         Color.White.copy(alpha = 0.4f)
     } else {
@@ -151,43 +161,66 @@ fun CodeBlockBody(
     }
 
     Box(modifier) {
-        Row(
+        SubcomposeLayout(
             modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = if (fillHeight) Modifier.fillMaxHeight() else Modifier.wrapContentHeight()
-            ) {
+        ) { constraints ->
+            val numberPlaceables = subcompose("numbers") {
                 highlightedLines.forEachIndexed { index, _ ->
                     BasicText(
                         text = (index + 1).toString().padStart(maxLineNumberWidth, ' '),
                         style = numberStyle,
-                        modifier = Modifier.width(numberColumnWidth(maxLineNumberWidth))
+                        softWrap = false
                     )
                 }
-                if (fillHeight) {
-                    Spacer(Modifier.weight(1f))
-                }
-            }
-
-            Box(
-                modifier = if (fillHeight) Modifier.weight(1f).fillMaxHeight()
-                else Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .horizontalScroll(horizontalState)
-                        .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier.wrapContentHeight())
-                ) {
-                    highlightedLines.forEach { line ->
-                        BasicText(
-                            text = line.ifEmpty { AnnotatedString(" ") },
-                            style = textStyle,
-                        modifier = Modifier
+            }.map { it.measure(Constraints()) }
+            val numberWidth = ((numberPlaceables.maxOfOrNull { it.width } ?: 0) + CODE_GUTTER.roundToPx())
+                .coerceAtMost(constraints.maxWidth)
+            val codePlaceable = subcompose("code") {
+                Layout(
+                    modifier = Modifier.horizontalScroll(horizontalState),
+                    content = {
+                        highlightedLines.forEach { line ->
+                            BasicText(
+                                text = line.ifEmpty { AnnotatedString(" ") },
+                                style = textStyle,
+                                softWrap = false
+                            )
+                        }
+                    }
+                ) { measurables, codeConstraints ->
+                    val lineConstraints = codeConstraints.copy(minWidth = 0, minHeight = 0, maxHeight = Constraints.Infinity)
+                    val textPlaceables = measurables.map { it.measure(lineConstraints) }
+                    val textOffsets = IntArray(textPlaceables.size)
+                    val baselines = IntArray(textPlaceables.size)
+                    var contentHeight = 0
+                    textPlaceables.forEachIndexed { index, text ->
+                        val number = numberPlaceables[index]
+                        val baseline = maxOf(text[FirstBaseline], number[FirstBaseline])
+                        baselines[index] = contentHeight + baseline
+                        textOffsets[index] = baselines[index] - text[FirstBaseline]
+                        contentHeight += baseline + maxOf(
+                            text.height - text[FirstBaseline],
+                            number.height - number[FirstBaseline]
                         )
                     }
-                    if (fillHeight) {
-                        Spacer(Modifier.weight(1f))
+                    layout(
+                        width = codeConstraints.constrainWidth(textPlaceables.maxOfOrNull { it.width } ?: 0),
+                        height = codeConstraints.constrainHeight(contentHeight),
+                        alignmentLines = lineBaselines.indices.associate { lineBaselines[it] to baselines[it] }
+                    ) {
+                        textPlaceables.forEachIndexed { index, text ->
+                            text.placeRelative(0, textOffsets[index])
+                        }
                     }
+                }
+            }.single().measure(constraints.copy(minWidth = 0).offset(horizontal = -numberWidth))
+            layout(
+                width = constraints.constrainWidth(numberWidth + codePlaceable.width),
+                height = constraints.constrainHeight(codePlaceable.height)
+            ) {
+                codePlaceable.placeRelative(numberWidth, 0)
+                numberPlaceables.forEachIndexed { index, number ->
+                    number.placeRelative(0, codePlaceable[lineBaselines[index]] - number[FirstBaseline])
                 }
             }
         }
@@ -205,9 +238,6 @@ fun CodeBlockBody(
         }
     }
 }
-
-private fun numberColumnWidth(digits: Int): Dp =
-    (CODE_FONT_SIZE.value * 0.62f * digits).dp + CODE_GUTTER
 
 private fun codeLineStyle(color: Color) = TextStyle(
     color = color,
