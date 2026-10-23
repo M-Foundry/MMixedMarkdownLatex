@@ -1,53 +1,45 @@
 package com.mroldl001.m3l
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.method.LinkMovementMethod
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.text.style.ReplacementSpan
-import android.util.TypedValue
-import android.view.Gravity
-import android.widget.TextView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import io.noties.markwon.Markwon
-import io.noties.markwon.AbstractMarkwonPlugin
-import io.noties.markwon.MarkwonConfiguration
-import io.noties.markwon.core.MarkwonTheme
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import java.util.UUID
 import kotlin.math.roundToInt
-
-private const val LatexTextSizeSp = 18f
 
 internal data class InlineFormula(
     val token: String,
@@ -59,6 +51,11 @@ internal data class TokenizedInlineLatex(
     val formulas: List<InlineFormula>
 )
 
+internal data class LatexRenderState(
+    val results: List<LatexRenderResult?>,
+    val isLoading: Boolean
+)
+
 @Composable
 internal fun rememberLatexRenderResults(
     context: Context,
@@ -66,7 +63,19 @@ internal fun rememberLatexRenderResults(
     textColor: Int,
     textSizePx: Float,
     displayMode: Boolean = false
-): State<List<LatexRenderResult?>> = key(
+): State<List<LatexRenderResult?>> {
+    val renderState = rememberLatexRenderState(context, formulas, textColor, textSizePx, displayMode)
+    return remember(renderState) { derivedStateOf { renderState.value.results } }
+}
+
+@Composable
+internal fun rememberLatexRenderState(
+    context: Context,
+    formulas: List<String>,
+    textColor: Int,
+    textSizePx: Float,
+    displayMode: Boolean = false
+): State<LatexRenderState> = key(
     context,
     formulas,
     textColor,
@@ -74,28 +83,35 @@ internal fun rememberLatexRenderResults(
     displayMode,
     context.resources.displayMetrics.density
 ) {
-    produceState(initialValue = List<LatexRenderResult?>(formulas.size) { null }) {
-        value = formulas.map { formula ->
+    produceState(
+        initialValue = LatexRenderState(List(formulas.size) { null }, formulas.isNotEmpty())
+    ) {
+        val results = formulas.map { formula ->
             LatexBitmapRenderer.render(context, formula, textColor, textSizePx, displayMode)
         }
+        value = LatexRenderState(results, isLoading = false)
     }
 }
 
 @Composable
-@SuppressLint("ProduceStateDoesNotAssignValue")
 internal fun LatexBlockImage(
     latex: String,
     textColor: Color,
     compact: Boolean = false,
     onWidthMeasured: ((Float) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    style: MarkdownLatexStyle = LocalMarkdownStyle.current.latex
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val textSizePx = with(density) { LatexTextSizeSp.sp.toPx() }
-    val results by rememberLatexRenderResults(context, listOf(latex), textColor.toArgb(), textSizePx, true)
-    val result = results.firstOrNull()
-    LaunchedEffect(result) {
+    val resolvedColor = style.blockColor.takeOrElse { textColor }
+    val textSizePx = with(density) { style.blockFontSize.toPx() }
+    val formula = remember(latex, style.transform) { style.transform?.invoke(latex) ?: latex }
+    val state by rememberLatexRenderState(
+        context, listOf(formula), resolvedColor.toArgb(), textSizePx, true
+    )
+    val result = state.results.firstOrNull()
+    LaunchedEffect(result, density, onWidthMeasured) {
         result?.let {
             onWidthMeasured?.invoke(with(density) { it.bitmap.width.toDp().value })
         }
@@ -110,111 +126,63 @@ internal fun LatexBlockImage(
         } ?: 10.dp
     }
 
-    val rendered = result ?: run {
-        Box(
-            modifier = modifier
-                .padding(vertical = blockVerticalPadding)
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-        ) {
-            BasicText(
-                text = latex,
-                style = TextStyle(
-                    color = textColor,
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            )
-        }
-        return
-    }
-    val image = rendered.bitmap
-    Box(
+    val loading = style.loading
+    val error = style.error
+    val onClick = style.onClick
+    val description = style.contentDescription(latex)
+    Column(
         modifier = modifier
-            .padding(vertical = blockVerticalPadding)
+            .then(if (onClick != null) Modifier.clickable { onClick(latex) } else Modifier)
+            .padding(style.blockPadding ?: PaddingValues(vertical = blockVerticalPadding))
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        horizontalAlignment = style.blockAlignment
     ) {
-        Image(
-            bitmap = image.asImageBitmap(),
-            contentDescription = latex,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .width(with(density) { image.width.toDp() })
-                .height(with(density) { image.height.toDp() })
-        )
+        when {
+            result != null -> Image(
+                bitmap = result.bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .width(with(density) { result.bitmap.width.toDp() })
+                    .height(with(density) { result.bitmap.height.toDp() })
+            )
+            state.isLoading && loading != null -> loading(latex)
+            !state.isLoading && error != null -> error(latex)
+            else -> BasicText(
+                text = latex,
+                style = TextStyle(color = resolvedColor).merge(style.fallbackStyle)
+            )
+        }
     }
 }
 
 @Composable
-@SuppressLint("ProduceStateDoesNotAssignValue")
 internal fun LatexInlineLine(
     line: String,
     textColor: Color,
     onWidthMeasured: ((Float) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    rendererStyle: MarkdownStyle = LocalMarkdownStyle.current
 ) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val textSizePx = with(density) { 15.sp.toPx() }
-    val latexTextSizePx = with(density) { LatexTextSizeSp.sp.toPx() }
-    val colorArgb = textColor.toArgb()
-    val tokenized = remember(line) { tokenizeInlineLatex(line) }
-    val results by rememberLatexRenderResults(
-        context,
-        tokenized.formulas.map { it.latex },
-        colorArgb,
-        latexTextSizePx
-    )
-    LaunchedEffect(results) {
-        val widest = results.filterNotNull().maxOfOrNull { it.bitmap.width } ?: 0
-        if (widest > 0) {
-            onWidthMeasured?.invoke(with(density) { widest.toDp().value })
-        }
-    }
-    val linkHandler = LocalMarkdownLinkHandler.current
-    val markwon = remember(context, linkHandler) {
-        Markwon.builder(context)
-            .usePlugin(object : AbstractMarkwonPlugin() {
-                override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                    builder.linkResolver { _, link -> linkHandler?.invoke(link) }
-                }
-
-                override fun configureTheme(builder: MarkwonTheme.Builder) {
-                    builder.headingBreakHeight(0)
-                }
-            })
-            .build()
-    }
-    val minInlineVerticalPaddingPx = with(density) { 2.dp.roundToPx() }
-    val spanned = remember(tokenized, results, colorArgb, minInlineVerticalPaddingPx) {
-        replaceInlineLatex(
-            markwon.toMarkdown(tokenized.markdown),
-            tokenized,
-            results,
-            minInlineVerticalPaddingPx
-        )
-    }
-
-    AndroidView(
-        factory = { viewContext ->
-            TextView(viewContext).apply {
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setTextColor(colorArgb)
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
-                setLineSpacing(0f, 1f)
-                gravity = Gravity.START
-                movementMethod = LinkMovementMethod.getInstance()
-                setTextIsSelectable(true)
-                includeFontPadding = false
+    val theme = LocalMarkdownRendererTheme.current
+    MarkdownText(
+        markdown = line,
+        modifier = modifier.fillMaxWidth(),
+        linkColor = rendererStyle.link.color.takeOrElse { theme.primary },
+        linkifyMask = rendererStyle.link.autoLinkMask,
+        textSelectionColors = TextSelectionColors(
+            handleColor = rendererStyle.selection.handleColor.takeOrElse { theme.primary },
+            backgroundColor = rendererStyle.selection.backgroundColor.takeOrElse {
+                theme.primary.copy(alpha = 0.35f)
             }
-        },
-        update = { textView ->
-            textView.setTextColor(colorArgb)
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
-            textView.text = spanned
-        },
-        modifier = modifier.fillMaxWidth()
+        ),
+        style = TextStyle(color = textColor, fontSize = 15.sp, lineHeight = 22.sp)
+            .merge(rendererStyle.body),
+        isTextSelectable = rendererStyle.selection.enabled,
+        afterSetMarkdown = {},
+        onWidthMeasured = onWidthMeasured,
+        rendererStyle = rendererStyle
     )
 }
 

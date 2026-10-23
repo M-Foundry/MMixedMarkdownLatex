@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.HorizontalAlignmentLine
 import androidx.compose.ui.layout.Layout
@@ -31,15 +32,17 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
-import androidx.compose.ui.unit.sp
 import dev.textmate.theme.FontStyle as TextMateFontStyle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -64,14 +67,19 @@ data class CodeBlockContent(
 
 @Composable
 @SuppressLint("ProduceStateDoesNotAssignValue")
-internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Color.Black) {
+internal fun CodeBlockView(
+    code: String,
+    info: String?,
+    primaryTint: Color = Color.Black,
+    style: MarkdownCodeBlockStyle = LocalMarkdownStyle.current.codeBlock
+) {
     val context = LocalContext.current
     val darkCodeBlock = LocalCodeBlockDark.current
-    val palette = codeBlockPalette(darkCodeBlock, primaryTint)
+    val palette = style.palette ?: codeBlockPalette(darkCodeBlock, primaryTint)
     val lines = code.replace("\r\n", "\n").replace('\r', '\n').split("\n")
     val fenceLabel = info?.trim()?.substringBefore(' ').orEmpty()
-    val normalizedLanguage = normalizeCodeLanguage(fenceLabel)
-    val language = normalizedLanguage.takeIf { hasGrammar(context, it) }
+    val normalizedLanguage = normalizeCodeLanguage(fenceLabel, style.languageAliases)
+    val language = normalizedLanguage.takeIf { it.isNotEmpty() }
     val codeLines = lines
     var blockCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
@@ -79,9 +87,9 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
     val maxLineNumberWidth = lineCount.toString().length
     val appContext = context.applicationContext
     val codeHScroll = rememberScrollState()
-    val highlightedLines by key(codeLines, language, darkCodeBlock) {
+    val highlightedLines by key(codeLines, language, palette, style) {
         produceState(initialValue = codeLines.map { AnnotatedString(it) }) {
-            value = highlightCodeLinesAsync(codeLines, language, darkCodeBlock, appContext)
+            value = highlightCodeLinesAsync(codeLines, language, palette, style, appContext)
         }
     }
 
@@ -97,20 +105,20 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp)
+            .padding(vertical = style.verticalPadding)
             .onGloballyPositioned { blockCoordinates = it }
-            .background(palette.background, RoundedCornerShape(8.dp))
+            .background(palette.background, style.shape)
     ) {
         if (header != null) {
             header(block)
-        } else if (fenceLabel.isNotEmpty()) {
+        } else if (style.showLanguageLabel && fenceLabel.isNotEmpty()) {
             BasicText(
                 text = fenceLabel,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                style = TextStyle(color = palette.muted, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                modifier = Modifier.padding(style.headerPadding),
+                style = TextStyle(color = palette.muted).merge(style.headerTextStyle)
             )
         } else {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(style.emptyHeaderHeight))
         }
         CodeBlockBody(
             highlightedLines = highlightedLines,
@@ -118,7 +126,13 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
             textColor = palette.text,
             numberColor = palette.muted,
             horizontalState = codeHScroll,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)
+            showHorizontalBar = style.showHorizontalBar,
+            modifier = Modifier.fillMaxWidth().padding(style.contentPadding),
+            textStyle = style.textStyle,
+            lineNumberStyle = style.lineNumberStyle,
+            showLineNumbers = style.showLineNumbers,
+            lineNumberGutter = style.lineNumberGutter,
+            scrollbarColor = style.scrollbarColor
         )
     }
 }
@@ -126,11 +140,20 @@ internal fun CodeBlockView(code: String, info: String?, primaryTint: Color = Col
 private suspend fun highlightCodeLinesAsync(
     lines: List<String>,
     language: String?,
-    dark: Boolean,
+    palette: CodeBlockPalette,
+    style: MarkdownCodeBlockStyle,
     context: Context
 ): List<AnnotatedString> = withContext(Dispatchers.Default) {
     try {
-        highlightCodeLines(lines, language, dark, context)
+        val highlighted = style.highlighter?.invoke(lines.toList(), language)
+            ?: highlightCodeLines(lines, language, palette, context, style.grammarProvider, style.highlightRules)
+        if (highlighted.size == lines.size && highlighted.indices.all { highlighted[it].text == lines[it] }) {
+            highlighted
+        } else {
+            lines.map { AnnotatedString(it) }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (error: Throwable) {
         lines.map { AnnotatedString(it) }
     }
@@ -143,18 +166,25 @@ fun CodeBlockBody(
     textColor: Color,
     numberColor: Color,
     horizontalState: ScrollState,
-    showHorizontalBar: Boolean = true,
+    showHorizontalBar: Boolean = LocalMarkdownStyle.current.codeBlock.showHorizontalBar,
     fillHeight: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = LocalMarkdownStyle.current.codeBlock.textStyle,
+    lineNumberStyle: TextStyle = LocalMarkdownStyle.current.codeBlock.lineNumberStyle,
+    showLineNumbers: Boolean = LocalMarkdownStyle.current.codeBlock.showLineNumbers,
+    lineNumberGutter: Dp = LocalMarkdownStyle.current.codeBlock.lineNumberGutter,
+    scrollbarColor: Color = LocalMarkdownStyle.current.codeBlock.scrollbarColor
 ) {
     val hBarVisible by rememberScrollbarVisibility(horizontalState)
     val hBarActive by rememberScrollActivity(horizontalState)
-    val numberStyle = codeLineStyle(numberColor)
-    val textStyle = codeLineStyle(textColor)
+    val resolvedTextStyle = TextStyle(color = textColor).merge(textStyle)
+    val numberStyle = resolvedTextStyle.copy(color = numberColor).merge(lineNumberStyle)
     val lineBaselines = remember(highlightedLines.size) {
         List(highlightedLines.size) { HorizontalAlignmentLine { old, new -> minOf(old, new) } }
     }
-    val scrollbarThumb = if (!textColor.isDark()) {
+    val scrollbarThumb = if (scrollbarColor != Color.Unspecified) {
+        scrollbarColor
+    } else if (!resolvedTextStyle.color.isDark()) {
         Color.White.copy(alpha = 0.4f)
     } else {
         Color.Black.copy(alpha = 0.4f)
@@ -165,16 +195,22 @@ fun CodeBlockBody(
             modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
         ) { constraints ->
             val numberPlaceables = subcompose("numbers") {
-                highlightedLines.forEachIndexed { index, _ ->
-                    BasicText(
-                        text = (index + 1).toString().padStart(maxLineNumberWidth, ' '),
-                        style = numberStyle,
-                        softWrap = false
-                    )
+                if (showLineNumbers) {
+                    highlightedLines.forEachIndexed { index, _ ->
+                        BasicText(
+                            text = (index + 1).toString().padStart(maxLineNumberWidth.coerceAtLeast(0), ' '),
+                            style = numberStyle,
+                            softWrap = false
+                        )
+                    }
                 }
             }.map { it.measure(Constraints()) }
-            val numberWidth = ((numberPlaceables.maxOfOrNull { it.width } ?: 0) + CODE_GUTTER.roundToPx())
-                .coerceAtMost(constraints.maxWidth)
+            val numberWidth = if (showLineNumbers) {
+                ((numberPlaceables.maxOfOrNull { it.width } ?: 0) + lineNumberGutter.roundToPx().coerceAtLeast(0))
+                    .coerceAtMost(constraints.maxWidth)
+            } else {
+                0
+            }
             val codePlaceable = subcompose("code") {
                 Layout(
                     modifier = Modifier.horizontalScroll(horizontalState),
@@ -182,7 +218,7 @@ fun CodeBlockBody(
                         highlightedLines.forEach { line ->
                             BasicText(
                                 text = line.ifEmpty { AnnotatedString(" ") },
-                                style = textStyle,
+                                style = resolvedTextStyle,
                                 softWrap = false
                             )
                         }
@@ -194,13 +230,17 @@ fun CodeBlockBody(
                     val baselines = IntArray(textPlaceables.size)
                     var contentHeight = 0
                     textPlaceables.forEachIndexed { index, text ->
-                        val number = numberPlaceables[index]
-                        val baseline = maxOf(text[FirstBaseline], number[FirstBaseline])
+                        val number = numberPlaceables.getOrNull(index)
+                        val textBaseline = text[FirstBaseline].takeUnless { it == AlignmentLine.Unspecified } ?: text.height
+                        val numberBaseline = number?.let {
+                            it[FirstBaseline].takeUnless { baseline -> baseline == AlignmentLine.Unspecified } ?: it.height
+                        } ?: 0
+                        val baseline = maxOf(textBaseline, numberBaseline)
                         baselines[index] = contentHeight + baseline
-                        textOffsets[index] = baselines[index] - text[FirstBaseline]
+                        textOffsets[index] = baselines[index] - textBaseline
                         contentHeight += baseline + maxOf(
-                            text.height - text[FirstBaseline],
-                            number.height - number[FirstBaseline]
+                            text.height - textBaseline,
+                            (number?.height ?: 0) - numberBaseline
                         )
                     }
                     layout(
@@ -220,7 +260,8 @@ fun CodeBlockBody(
             ) {
                 codePlaceable.placeRelative(numberWidth, 0)
                 numberPlaceables.forEachIndexed { index, number ->
-                    number.placeRelative(0, codePlaceable[lineBaselines[index]] - number[FirstBaseline])
+                    val baseline = number[FirstBaseline].takeUnless { it == AlignmentLine.Unspecified } ?: number.height
+                    number.placeRelative(0, codePlaceable[lineBaselines[index]] - baseline)
                 }
             }
         }
@@ -238,13 +279,6 @@ fun CodeBlockBody(
         }
     }
 }
-
-private fun codeLineStyle(color: Color) = TextStyle(
-    color = color,
-    fontSize = CODE_FONT_SIZE,
-    lineHeight = CODE_LINE_HEIGHT,
-    fontFamily = FontFamily.Monospace
-)
 
 private fun Color.isDark(): Boolean {
     val r = if (red <= 0.04045f) red / 12.92f else ((red + 0.055f) / 1.055f).pow(2.4f)
@@ -333,9 +367,6 @@ private fun rememberScrollActivity(vararg states: ScrollState): State<Boolean> {
 }
 
 
-private val CODE_FONT_SIZE = 13.sp
-private val CODE_LINE_HEIGHT = 22.sp
-private val CODE_GUTTER = 14.dp
 private const val SCROLLBAR_HIDE_DELAY = 700L
 private const val SCROLLBAR_FADE_MILLIS = 220
 private val SCROLLBAR_GAP = 8.dp
@@ -343,8 +374,12 @@ private val SCROLLBAR_TRACK_HEIGHT = 5.dp
 private val SCROLLBAR_THUMB = Color(0x66FFFFFF)
 private const val SCROLLBAR_MIN_FRACTION = 0.12f
 
-private fun normalizeCodeLanguage(label: String): String {
-    return when (label.lowercase().substringBefore(' ').trim()) {
+private fun normalizeCodeLanguage(label: String, aliases: Map<String, String>): String {
+    val language = label.lowercase().substringBefore(' ').trim()
+    aliases.entries.firstOrNull { it.key.lowercase().trim() == language }?.value?.let {
+        return it.lowercase().trim()
+    }
+    return when (language) {
         "py", "python3" -> "python"
         "js", "mjs", "cjs", "node" -> "javascript"
         "ts", "mts", "cts" -> "typescript"
@@ -392,7 +427,7 @@ private fun normalizeCodeLanguage(label: String): String {
         "f#" -> "fsharp"
         "vb", "vbnet" -> "vb"
         "plaintext", "txt" -> "text"
-        else -> label.lowercase().substringBefore(' ').trim()
+        else -> language
     }
 }
 
@@ -458,16 +493,17 @@ fun codeBlockPalette(dark: Boolean, primaryTint: Color): CodeBlockPalette {
 private fun highlightCodeLines(
     lines: List<String>,
     language: String?,
-    dark: Boolean,
-    context: Context
+    palette: CodeBlockPalette,
+    context: Context,
+    grammarProvider: ((Context, String) -> String?)?,
+    highlightRules: List<MarkdownHighlightRule>
 ): List<AnnotatedString> {
     val plain = lines.map { AnnotatedString(it) }
     if (language == null) return plain
     return try {
-        val palette = if (dark) DarkCodeBlockPalette else LightCodeBlockPalette
-        val grammar = codeGrammar(context, language) ?: return plain
+        val grammar = codeGrammar(context, language, grammarProvider) ?: return plain
         val tokens = codeTokens(grammar, lines)
-        val theme = codeTheme(dark, palette)
+        val theme = codeTheme(palette)
         val defaultColor = palette.text
 
         lines.mapIndexed { index, line ->
@@ -481,22 +517,31 @@ private fun highlightCodeLines(
                     val start = token.start.coerceIn(0, line.length)
                     val end = token.end.coerceIn(start, line.length)
                     if (end <= start) return@forEach
-                    val resolvedColor = style?.foreground
-                        ?.takeIf { it != 0L }
-                        ?.let { Color(textMateForegroundColor(it)) }
-                    val italic = style?.fontStyle?.any { it == TextMateFontStyle.ITALIC } == true
-                    if (resolvedColor == null && !italic) return@forEach
-                    addStyle(
-                        SpanStyle(
-                            color = resolvedColor ?: defaultColor,
-                            fontStyle = if (italic) FontStyle.Italic else null
-                        ),
-                        start,
-                        end
+                    val resolvedColor = style?.foreground?.let { Color(textMateForegroundColor(it)) }
+                    val fontStyles = style?.fontStyle.orEmpty()
+                    val decorations = buildList {
+                        if (TextMateFontStyle.UNDERLINE in fontStyles) add(TextDecoration.Underline)
+                        if (TextMateFontStyle.STRIKETHROUGH in fontStyles) add(TextDecoration.LineThrough)
+                    }
+                    var tokenStyle = SpanStyle(
+                        color = resolvedColor ?: defaultColor,
+                        fontStyle = if (TextMateFontStyle.ITALIC in fontStyles) FontStyle.Italic else null,
+                        fontWeight = if (TextMateFontStyle.BOLD in fontStyles) FontWeight.Bold else null,
+                        textDecoration = decorations.takeIf { it.isNotEmpty() }?.let { TextDecoration.combine(it) }
                     )
+                    highlightRules.forEach { rule ->
+                        if (rule.scopes.any { selector ->
+                            token.scopes.any { scope -> scope == selector || scope.startsWith("$selector.") }
+                        }) {
+                            tokenStyle = tokenStyle.merge(rule.style)
+                        }
+                    }
+                    addStyle(tokenStyle, start, end)
                 }
             }
         }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (error: Throwable) {
         plain
     }

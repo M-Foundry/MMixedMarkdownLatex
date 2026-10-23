@@ -65,13 +65,13 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    implementation("io.noties.markwon:core:4.6.2")
+    api("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
     implementation("io.noties.markwon:linkify:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("com.github.jeziellago:Markwon:58aa5aba6a")
-    implementation("io.coil-kt:coil:2.7.0")
+    api("io.coil-kt:coil:2.7.0")
     implementation("io.github.ivan-magda:kotlin-textmate-core:0.3.0")
     implementation("com.github.sixgodIT:JLaTexMath-andriod:-SNAPSHOT")
 }

@@ -33,19 +33,26 @@ private object TextMateEngine {
     private val grammars = LinkedHashMap<String, Grammar?>(16, 0.75f, true)
     private var scopeLanguages: Map<String, String>? = null
 
-    fun grammar(context: Context, language: String): Grammar? = lock.withLock {
-        grammars[language]?.let { return@withLock it }
-        val raw = rawGrammarLocked(context.applicationContext, language)
+    fun grammar(
+        context: Context,
+        language: String,
+        provider: ((Context, String) -> String?)?
+    ): Grammar? = lock.withLock {
+        if (provider == null && grammars.containsKey(language)) return@withLock grammars[language]
+        val appContext = context.applicationContext
+        val raw = provider?.invoke(appContext, language)?.let(::parseGrammar)
+            ?: rawGrammarLocked(appContext, language)
         val scope = raw?.scopeName ?: "source.$language"
         val loaded = if (raw == null) {
             null
         } else {
             try {
-                Registry(assetGrammarSource(context.applicationContext, raw), onigLib).loadGrammar(scope)
+                Registry(grammarSource(appContext, raw, provider), onigLib).loadGrammar(scope)
             } catch (error: Throwable) {
                 null
             }
         }
+        if (provider != null) return@withLock loaded
         grammars[language] = loaded
         while (grammars.size > MAX_CACHED_GRAMMARS) {
             val oldest = grammars.keys.firstOrNull() ?: break
@@ -67,13 +74,34 @@ private object TextMateEngine {
         perLine
     }
 
-    private fun assetGrammarSource(context: Context, raw: RawGrammar) = object : GrammarSource {
+    private fun grammarSource(
+        context: Context,
+        raw: RawGrammar,
+        provider: ((Context, String) -> String?)?
+    ) = object : GrammarSource {
+        private val customGrammars = mutableMapOf<String, RawGrammar?>()
+
         override fun loadRawGrammar(scopeName: String): RawGrammar? {
             if (scopeName == raw.scopeName) return raw
-            val language = grammarLanguagesByScopeLocked(context)[scopeName] ?: return null
+            if (customGrammars.containsKey(scopeName)) return customGrammars[scopeName]
+            provider?.invoke(context, scopeName)?.let(::parseGrammar)?.let {
+                customGrammars[scopeName] = it
+                return it
+            }
+            val language = grammarLanguagesByScopeLocked(context)[scopeName]
+            if (language == null) {
+                customGrammars[scopeName] = null
+                return null
+            }
+            provider?.invoke(context, language)?.let(::parseGrammar)?.let {
+                customGrammars[scopeName] = it
+                return it
+            }
             return rawGrammarLocked(context, language)
         }
     }
+
+    private fun parseGrammar(json: String): RawGrammar = GrammarReader.readGrammar(json)
 
     private fun grammarLanguagesByScopeLocked(context: Context): Map<String, String> {
         scopeLanguages?.let { return it }
@@ -99,7 +127,7 @@ private object TextMateEngine {
     }
 
     private fun rawGrammarLocked(context: Context, language: String): RawGrammar? {
-        rawCache[language]?.let { return it }
+        if (rawCache.containsKey(language)) return rawCache[language]
         val parsed = try {
             context.assets.open("$GRAMMAR_ASSET_DIR/$language.tmLanguage.json").use { stream ->
                 GrammarReader.readGrammar(stream)
@@ -118,17 +146,16 @@ private object TextMateEngine {
 
 private object ThemeCache {
     private val lock = ReentrantLock()
-    private val cache = LinkedHashMap<String, Theme>(4, 0.75f, true)
+    private val cache = LinkedHashMap<CodeBlockPalette, Theme>(4, 0.75f, true)
 
-    fun get(darkMode: Boolean, palette: CodeBlockPalette): Theme = lock.withLock {
-        val key = (if (darkMode) "d" else "l") + palette.hashCode()
-        cache[key]?.let { return@withLock it }
+    fun get(palette: CodeBlockPalette): Theme = lock.withLock {
+        cache[palette]?.let { return@withLock it }
         val built = try {
-            buildTheme(if (darkMode) "MIMO_DARK" else "MIMO_LIGHT", palette)
+            buildTheme("M3L_CODE", palette)
         } catch (error: Throwable) {
             null
         } ?: return@withLock fallbackTheme(palette)
-        cache[key] = built
+        cache[palette] = built
         while (cache.size > MAX_CACHED_THEMES) {
             val oldest = cache.keys.firstOrNull() ?: break
             cache.remove(oldest)
@@ -137,8 +164,8 @@ private object ThemeCache {
     }
 
     private fun fallbackTheme(palette: CodeBlockPalette): Theme {
-        val fg = String.format("%06X", 0xFFFFFF and palette.text.toArgb())
-        val bg = String.format("%06X", 0xFFFFFF and palette.background.toArgb())
+        val fg = themeColorHex(palette.text)
+        val bg = themeColorHex(palette.background)
         val json = """{"name":"MIMO_FALLBACK","type":"dark",""" +
             """"colors":{"editor.foreground":"#$fg","editor.background":"#$bg"},""" +
             """"tokenColors":[]}"""
@@ -150,7 +177,7 @@ private object ThemeCache {
     private fun buildTheme(key: String, palette: CodeBlockPalette): Theme {
         val rules = ArrayList<String>()
         fun rule(scope: String, color: Color, italic: Boolean) {
-            val hex = String.format("%06X", 0xFFFFFF and color.toArgb())
+            val hex = themeColorHex(color)
             val style = if (italic) {
                 ""","settings":{"foreground":"#$hex","fontStyle":"italic"}"""
             } else {
@@ -177,12 +204,25 @@ private object ThemeCache {
         rule("support.type", palette.type, italic = false)
         rule("support.class", palette.type, italic = false)
         rule("variable", palette.text, italic = false)
+        rule("variable.other.property", palette.property, italic = false)
+        rule("variable.other.object.property", palette.property, italic = false)
+        rule("support.variable.property", palette.property, italic = false)
+        rule("entity.name.property", palette.property, italic = false)
+        rule("meta.object-literal.key", palette.property, italic = false)
         rule("variable.language", palette.keyword, italic = false)
         rule("meta.annotation", palette.annotation, italic = false)
         rule("punctuation", palette.operator, italic = false)
         rule("invalid", palette.annotation, italic = false)
-        val fg = String.format("%06X", 0xFFFFFF and palette.text.toArgb())
-        val bg = String.format("%06X", 0xFFFFFF and palette.background.toArgb())
+        listOf(
+            "markup.bold" to "bold",
+            "markup.italic" to "italic",
+            "markup.underline" to "underline",
+            "markup.strikethrough" to "strikethrough"
+        ).forEach { (scope, fontStyle) ->
+            rules += """{"scope":"$scope","settings":{"fontStyle":"$fontStyle"}}"""
+        }
+        val fg = themeColorHex(palette.text)
+        val bg = themeColorHex(palette.background)
         val json = """{"name":"$key","type":"dark",""" +
             """"colors":{"editor.foreground":"#$fg","editor.background":"#$bg"},""" +
             """"tokenColors":[${rules.joinToString(",")}]}"""
@@ -191,26 +231,22 @@ private object ThemeCache {
     }
 }
 
-internal fun codeGrammar(context: Context, language: String): Grammar? =
-    TextMateEngine.grammar(context, language)
+internal fun codeGrammar(
+    context: Context,
+    language: String,
+    provider: ((Context, String) -> String?)? = null
+): Grammar? = TextMateEngine.grammar(context, language, provider)
 
 internal fun codeTokens(grammar: Grammar, lines: List<String>): List<List<CodeToken>> =
     TextMateEngine.tokenize(grammar, lines)
 
-internal fun codeTheme(darkMode: Boolean, palette: CodeBlockPalette): Theme =
-    ThemeCache.get(darkMode, palette)
-
-internal fun hasGrammar(context: Context, language: String): Boolean {
-    if (language == "text") return false
-    return try {
-        context.assets.open("$GRAMMAR_ASSET_DIR/$language.tmLanguage.json").close()
-        true
-    } catch (error: Throwable) {
-        false
-    }
-}
+internal fun codeTheme(palette: CodeBlockPalette): Theme = ThemeCache.get(palette)
 
 internal fun resolveStyle(theme: Theme, scopes: List<String>): ResolvedStyle? = theme.match(scopes)
 
-internal fun textMateForegroundColor(foreground: Long): Int =
-    (0xFF000000L or (foreground and 0xFFFFFFL)).toInt()
+private fun themeColorHex(color: Color): String {
+    val argb = color.toArgb()
+    return String.format("%06X%02X", argb and 0xFFFFFF, argb ushr 24)
+}
+
+internal fun textMateForegroundColor(foreground: Long): Int = foreground.toInt()

@@ -1,22 +1,25 @@
 package com.mroldl001.m3l
 
-import android.text.util.Linkify
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -49,16 +52,10 @@ fun MixedMarkdownLatex(
     isStreaming: Boolean = false,
     compact: Boolean = false,
     onLatexWidthMeasured: ((Float) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    style: MarkdownStyle = LocalMarkdownStyle.current,
+    components: MarkdownComponents = LocalMarkdownComponents.current
 ) {
-    val theme = LocalMarkdownRendererTheme.current
-    val inlineCodeBackground by rememberUpdatedState(theme.primary.copy(alpha = 0.15f).toArgb())
-    val inlineCodeText by rememberUpdatedState(theme.primary.toArgb())
-    val markdownLinkColor = theme.primary
-    val markdownSelectionColors = TextSelectionColors(
-        handleColor = theme.primary,
-        backgroundColor = theme.primary.copy(alpha = 0.35f)
-    )
     val latestText by rememberUpdatedState(text)
     var renderedText by remember {
         mutableStateOf(if (isStreaming) stabilizeStreamingMarkdown(text) else text)
@@ -66,12 +63,12 @@ fun MixedMarkdownLatex(
     LaunchedEffect(text, isStreaming) {
         if (!isStreaming) renderedText = text
     }
-    LaunchedEffect(isStreaming) {
+    LaunchedEffect(isStreaming, style.streamingIntervalMillis) {
         if (!isStreaming) return@LaunchedEffect
         while (true) {
             val stableText = stabilizeStreamingMarkdown(latestText)
             if (stableText != renderedText) renderedText = stableText
-            delay(80)
+            delay(style.streamingIntervalMillis)
         }
     }
     val displayText = if (isStreaming) renderedText else text
@@ -79,198 +76,203 @@ fun MixedMarkdownLatex(
         derivedStateOf { splitContent(normalizeHtmlToMarkdown(displayText), allowUnclosedCodeFence = true) }
     }
 
-    Column(
-        modifier = modifier.fillMaxWidth()
+    CompositionLocalProvider(
+        LocalMarkdownStyle provides style,
+        LocalMarkdownComponents provides components
     ) {
-        segments.forEach { segment ->
-            when (segment.type) {
-                ContentType.MARKDOWN -> {
-                    val markdown = segment.content
-                    key(markdownLinkColor, textColor) {
-                        MarkdownText(
-                            markdown = markdown,
-                            modifier = Modifier.fillMaxWidth(),
-                            linkColor = markdownLinkColor,
-                            linkifyMask = Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES,
-                            textSelectionColors = markdownSelectionColors,
-                            style = TextStyle(
-                                color = textColor,
-                                fontSize = 15.sp,
-                                lineHeight = 22.sp
-                            ),
-                            isTextSelectable = true,
-                            afterSetMarkdown = { textView ->
-                                applyInlineCodeStyle(
-                                    textView,
-                                    inlineCodeBackground,
-                                    inlineCodeText
-                                )
-                            },
-                            onWidthMeasured = onLatexWidthMeasured
-                        )
-                    }
-                }
-                ContentType.TABLE -> {
-                    Box(modifier = Modifier.padding(vertical = 12.dp)) {
-                        MarkdownTableView(
-                            markdown = segment.content,
-                            textColor = textColor
-                        )
-                    }
-                }
-                ContentType.CODE_BLOCK -> {
-                    CodeBlockView(code = segment.content, info = segment.info, primaryTint = theme.primary)
-                }
-                ContentType.LATEX_BLOCK -> {
-                    LatexBlockImage(
-                        latex = segment.content,
-                        textColor = textColor,
-                        compact = compact,
-                        onWidthMeasured = onLatexWidthMeasured
-                    )
-                }
-                ContentType.LATEX_INLINE -> {
-                    LatexInlineLine(
-                        line = segment.content,
-                        textColor = textColor,
-                        onWidthMeasured = onLatexWidthMeasured
-                    )
-                }
-                ContentType.QUOTE -> {
-                    QuoteBlockView(content = segment.content, textColor = textColor)
-                }
-                ContentType.HR -> {
-                    HrView()
-                }
-                else -> {}
-            }
+        Column(modifier = modifier.fillMaxWidth()) {
+            MarkdownBlocks(segments, textColor, compact, onLatexWidthMeasured, style, components)
         }
     }
 }
 
 @Composable
-private fun QuoteBlockView(
+internal fun QuoteBlockView(
     content: String,
     textColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    onLatexWidthMeasured: ((Float) -> Unit)? = null
 ) {
     val theme = LocalMarkdownRendererTheme.current
-    val quoteBar = theme.primary.copy(alpha = 0.6f)
-    Row(
+    val style = LocalMarkdownStyle.current
+    val quoteStyle = style.quote
+    val quoteBar = quoteStyle.barColor.markdownColorOr(theme.primary.copy(alpha = 0.6f))
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .padding(vertical = 6.dp)
+            .padding(quoteStyle.padding)
+            .background(quoteStyle.backgroundColor)
     ) {
+        Box(Modifier.matchParentSize()) {
+            Box(
+                Modifier.width(quoteStyle.barWidth).fillMaxHeight()
+                    .clip(quoteStyle.barShape).background(quoteBar)
+            )
+        }
         Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(quoteBar)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Box(modifier = Modifier.weight(1f)) {
-            MixedMarkdownLatex(text = content, textColor = textColor)
+            Modifier.fillMaxWidth().padding(start = quoteStyle.barWidth + quoteStyle.spacing)
+                .padding(quoteStyle.contentPadding)
+        ) {
+            val body = style.body.merge(quoteStyle.textStyle).let {
+                if (quoteStyle.textColor == Color.Unspecified) it else it.copy(color = quoteStyle.textColor)
+            }
+            MixedMarkdownLatex(
+                text = content,
+                textColor = quoteStyle.textColor.markdownColorOr(textColor),
+                compact = compact,
+                onLatexWidthMeasured = onLatexWidthMeasured,
+                style = style.copy(body = body)
+            )
         }
     }
 }
 
 @Composable
-private fun HrView() {
+internal fun HrView() {
     val theme = LocalMarkdownRendererTheme.current
-    val hrColor = theme.primary.copy(alpha = 0.4f)
+    val style = LocalMarkdownStyle.current.divider
+    val hrColor = style.color.markdownColorOr(theme.primary.copy(alpha = 0.4f))
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(style.padding)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(1.dp)
+                .height(style.thickness)
+                .clip(style.shape)
                 .background(hrColor)
         )
     }
 }
 
 @Composable
-private fun MarkdownTableView(
+internal fun MarkdownTableView(
     markdown: String,
     textColor: Color
 ) {
     val theme = LocalMarkdownRendererTheme.current
-    val rows = remember(markdown) {
+    val style = LocalMarkdownStyle.current
+    val tableStyle = style.table
+    val parentPath = LocalMarkdownPath.current
+    val tableLines = remember(markdown) {
         markdown.lineSequence()
             .map { it.removeSuffix("\r").trim() }
-            .filter { it.isNotBlank() && !isMarkdownTableDelimiter(it) }
-            .map { line ->
-                markdownTableCells(line)
-            }
+            .filter { it.isNotBlank() }
             .toList()
+    }
+    val rows = remember(tableLines) {
+        tableLines.filterNot(::isMarkdownTableDelimiter).map(::markdownTableCells)
+    }
+    val markdownAlignments = remember(tableLines) {
+        tableLines.firstOrNull(::isMarkdownTableDelimiter)?.let(::markdownTableCells)?.map {
+            when {
+                it.startsWith(':') && it.endsWith(':') -> TextAlign.Center
+                it.endsWith(':') -> TextAlign.Right
+                else -> TextAlign.Left
+            }
+        }.orEmpty()
     }
 
     if (rows.isEmpty()) return
 
-    val tableShape = RoundedCornerShape(10.dp)
-    val borderColor = theme.outlineVariant.copy(alpha = 0.58f)
-    val headerColor = theme.primary.copy(alpha = 0.12f)
+    val borderColor = tableStyle.borderColor.markdownColorOr(theme.outlineVariant.copy(alpha = 0.58f))
+    val headerColor = tableStyle.headerBackground.markdownColorOr(theme.primary.copy(alpha = 0.12f))
+    val bodyColor = tableStyle.bodyBackground.markdownColorOr(theme.surface)
     val maxColumnCount = rows.maxOf { it.size }
     val density = LocalDensity.current
-    val renderedFormulaWidths = remember(markdown, density.density, density.fontScale) {
+    val layoutDirection = LocalLayoutDirection.current
+    val textMeasurer = rememberTextMeasurer()
+    val renderedFormulaWidths = remember(markdown, style, density.density, density.fontScale) {
         mutableStateMapOf<Int, Float>()
     }
+    val horizontalPadding = tableStyle.cellPadding.calculateLeftPadding(layoutDirection) +
+        tableStyle.cellPadding.calculateRightPadding(layoutDirection)
     val columnWidths = List(maxColumnCount) { columnIndex ->
-        val widestCell = rows.fold(0) { widest, row ->
+        val widestCell = rows.mapIndexed { rowIndex, row ->
             val cellText = stripLatexForTableWidth(row.getOrNull(columnIndex).orEmpty())
-            val cellWidth = cellText.fold(0) { width, character ->
-                width + if (character.code > 0x7F) 14 else 8
-            }
-            maxOf(widest, cellWidth)
-        }
-        val estimatedWidth = (widestCell + 28).coerceIn(96, 260).dp
-        val renderedWidth = (renderedFormulaWidths[columnIndex] ?: 0f).dp + 28.dp
-        maxOf(estimatedWidth, renderedWidth)
+            textMeasurer.measure(
+                text = cellText,
+                style = TextStyle(fontSize = 15.sp, lineHeight = 22.sp).merge(style.body)
+                    .merge(if (rowIndex == 0) tableStyle.headerTextStyle else tableStyle.bodyTextStyle),
+                softWrap = false,
+                maxLines = 1
+            ).size.width
+        }.maxOrNull() ?: 0
+        val estimatedWidth = with(density) { widestCell.toDp() } + horizontalPadding
+        val renderedWidth = (renderedFormulaWidths[columnIndex] ?: 0f).dp + horizontalPadding
+        tableStyle.columnWidths.getOrNull(columnIndex) ?: maxOf(estimatedWidth, renderedWidth)
+            .coerceIn(tableStyle.minColumnWidth, tableStyle.maxColumnWidth)
     }
     val tableWidth = columnWidths.fold(0.dp) { total, width -> total + width }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(tableStyle.padding)
             .horizontalScroll(rememberScrollState())
     ) {
         Column(
             modifier = Modifier
                 .width(tableWidth)
-                .clip(tableShape)
-                .border(BorderStroke(1.dp, borderColor), tableShape)
+                .clip(tableStyle.shape)
+                .border(BorderStroke(tableStyle.borderWidth, borderColor), tableStyle.shape)
         ) {
             rows.forEachIndexed { rowIndex, cells ->
-                Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-                    repeat(maxColumnCount) { columnIndex ->
-                        val cell = cells.getOrNull(columnIndex).orEmpty()
-                        Box(
-                            modifier = Modifier
-                                .width(columnWidths[columnIndex])
-                                .fillMaxHeight()
-                                .background(if (rowIndex == 0) headerColor else theme.surface)
-                                .border(BorderStroke(0.5.dp, borderColor))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            MixedMarkdownLatex(
-                                text = cell.replace("\\|", "|").let {
-                                    if (rowIndex == 0 && !it.startsWith("**")) "**$it**" else it
-                                },
-                                textColor = textColor,
-                                compact = true,
-                                onLatexWidthMeasured = { width ->
-                                    val previous = renderedFormulaWidths[columnIndex] ?: 0f
-                                    if (width > previous) {
-                                        renderedFormulaWidths[columnIndex] = width
-                                    }
+                val background = when {
+                    rowIndex == 0 -> headerColor
+                    rowIndex % 2 == 0 -> tableStyle.alternateBackground.markdownColorOr(bodyColor)
+                    else -> bodyColor
+                }
+                Box {
+                    Row(Modifier.matchParentSize()) {
+                        columnWidths.forEach { width ->
+                            Box(Modifier.width(width).fillMaxHeight().background(background)
+                                .border(BorderStroke(tableStyle.cellBorderWidth, borderColor)))
+                        }
+                    }
+                    Layout(content = {
+                        repeat(maxColumnCount) { columnIndex ->
+                            val alignment = tableStyle.columnAlignments[columnIndex]
+                                ?: markdownAlignments.getOrNull(columnIndex).takeIf { tableStyle.respectMarkdownAlignment }
+                            val foreground = if (rowIndex == 0) tableStyle.headerTextColor else tableStyle.bodyTextColor
+                            val cellTextStyle = style.body
+                                .merge(if (rowIndex == 0) tableStyle.headerTextStyle else tableStyle.bodyTextStyle)
+                                .let { if (foreground == Color.Unspecified) it else it.copy(color = foreground) }
+                                .let { if (alignment == null) it else it.copy(textAlign = alignment) }
+                            CompositionLocalProvider(LocalMarkdownPath provides (parentPath + rowIndex + columnIndex)) {
+                                Box(Modifier.padding(tableStyle.cellPadding)) {
+                                    MixedMarkdownLatex(
+                                        text = cells.getOrNull(columnIndex).orEmpty().replace("\\|", "|"),
+                                        textColor = foreground.markdownColorOr(textColor),
+                                        compact = true,
+                                        style = style.copy(body = cellTextStyle),
+                                        onLatexWidthMeasured = { width ->
+                                            val previous = renderedFormulaWidths[columnIndex] ?: 0f
+                                            if (width > previous) renderedFormulaWidths[columnIndex] = width
+                                        }
+                                    )
                                 }
-                            )
+                            }
+                        }
+                    }) { measurables, constraints ->
+                        val widths = columnWidths.map { it.roundToPx() }
+                        val placeables = measurables.mapIndexed { index, measurable ->
+                            measurable.measure(Constraints.fixedWidth(widths[index]))
+                        }
+                        val height = placeables.maxOfOrNull { it.height } ?: 0
+                        layout(constraints.constrainWidth(widths.sum()), constraints.constrainHeight(height)) {
+                            var x = 0
+                            placeables.forEachIndexed { index, placeable ->
+                                val offset = tableStyle.cellAlignment.align(
+                                    IntSize(placeable.width, placeable.height),
+                                    IntSize(widths[index], height), layoutDirection
+                                )
+                                placeable.placeRelative(x + offset.x, offset.y)
+                                x += widths[index]
+                            }
                         }
                     }
                 }
