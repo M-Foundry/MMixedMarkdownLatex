@@ -44,7 +44,7 @@ Then add the dependency to the app or library module:
 
 ```kotlin
 dependencies {
-    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.1")
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.2")
 }
 ```
 
@@ -62,12 +62,12 @@ On Windows:
 .\gradlew.bat bundleRenderer
 ```
 
-The generated `build/distributions/m3l-renderer-1.0.1.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
+The generated `build/distributions/m3l-renderer-1.0.2.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
 
 Add the unpacked repository to `settings.gradle.kts`, then add:
 
 ```kotlin
-implementation("com.mroldl001:mmixedmarkdownlatex:1.0.1")
+implementation("com.mroldl001:mmixedmarkdownlatex:1.0.2")
 ```
 
 ## 📖 Basic usage
