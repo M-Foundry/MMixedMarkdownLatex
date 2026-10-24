@@ -22,7 +22,7 @@ tasks.register("verifyRendererDependencies") {
 }
 
 group = "com.mroldl001"
-version = "1.0.2"
+version = "1.1.0"
 
 android {
     namespace = "com.mroldl001.m3l"
@@ -88,9 +88,9 @@ publishing {
             afterEvaluate {
                 from(components["release"])
             }
-            artifactId = "mmixedmarkdownlatex"
+            artifactId = "m3l"
             pom {
-                name = "MMixedMarkdownLatex"
+                name = "M3L"
                 description = "Mixed Markdown + LaTeX renderer library"
                 licenses {
                     license {

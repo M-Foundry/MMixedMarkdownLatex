@@ -17,4 +17,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MMixedMarkdownLatex"
+rootProject.name = "m3l"

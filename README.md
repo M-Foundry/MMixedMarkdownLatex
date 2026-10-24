@@ -4,7 +4,7 @@
 
 </div>
 
-MMixedMarkdown LaTeX（M3L）是一个面向 Android Jetpack Compose 的 Markdown、LaTeX 与代码高亮渲染器，它从 [MChat](https://github.com/MChat-code/MChat) 抽离而来，专注于内容渲染。
+M3L 是一个面向 Android Jetpack Compose 的 Markdown、LaTeX 与代码高亮渲染器，它从 [MChat](https://github.com/MChat-code/MChat) 抽离而来，专注于内容渲染。
 
 **语言：** 简体中文 | [English](README.en.md)
 
@@ -44,9 +44,11 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.2")
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.1.0")
 }
 ```
+
+源码包名和 Android namespace 均为 `com.mroldl001.m3l`。JitPack 坐标中的 `MMixedMarkdownLatex` 是 GitHub 仓库名；本地 Maven 发布名为 `com.mroldl001:m3l:1.1.0`。
 
 ### 本地构建发行包
 
@@ -56,7 +58,7 @@ dependencies {
 sh ./gradlew bundleRenderer
 ```
 
-Windows 使用 `.\gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.0.2.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
+Windows 使用 `.\gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.1.0.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
 
 解压后，在目标项目的 `settings.gradle.kts` 添加：
 
@@ -74,46 +76,44 @@ dependencyResolutionManagement {
 然后添加依赖：
 
 ```kotlin
-implementation("com.mroldl001:mmixedmarkdownlatex:1.0.2")
+implementation("com.mroldl001:m3l:1.1.0")
 ```
 
 ## 📖 基本用法
 
 ```kotlin
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import com.mroldl001.m3l.MixedMarkdownLatex
+import com.mroldl001.m3l.*
 
 @Composable
 fun RendererScreen(text: String, streaming: Boolean) {
-    MixedMarkdownLatex(
-        text = text,
-        textColor = Color.Black,
+    Markdown(
+        content = text,
         isStreaming = streaming
     )
 }
 ```
 
-`text` 可以直接是 Markdown 字符串。渲染器会识别 Markdown、表格、引用、任务列表、基础 HTML、代码围栏和 LaTeX；渲染结果本身是一个填满父容器宽度的 `Column`。
+`content` 可以直接是 Markdown 字符串。渲染器会识别 Markdown、表格、引用、任务列表、基础 HTML、代码围栏和 LaTeX；渲染结果本身是一个填满父容器宽度的 `Column`。
 
-主题通过 `LocalMarkdownRendererTheme` 注入，代码块明暗色通过 `LocalCodeBlockDark` 注入。库不读取 `MaterialTheme`，也不管理页面滚动，因此通常把它放在宿主的 `LazyColumn`、`Column.verticalScroll` 或其他滚动容器中：
+只需要解析内容时，可调用 `parseMarkdownBlocks(content)` 获取 `List<MarkdownBlock>`，块类型为 `MarkdownBlockType`。可选参数 `allowUnclosedCodeFence` 默认为 false。
+
+使用 `MarkdownTheme` 统一提供颜色、样式、组件、代码块明暗色、链接事件和代码块工具栏。未传入的配置继承父级；高级用法仍可直接提供对应的 CompositionLocal。库不读取 `MaterialTheme`，页面滚动由宿主管理：
 
 ```kotlin
 LazyColumn {
     item {
-        CompositionLocalProvider(
-            LocalMarkdownRendererTheme provides MarkdownRendererTheme(
+        MarkdownTheme(
+            colors = MarkdownColors(
                 primary = Color(0xFF6750A4),
+                text = if (isSystemInDarkTheme()) Color.White else Color.Black,
                 surface = Color.White,
                 outlineVariant = Color(0xFFCAC4D0)
             ),
-            LocalCodeBlockDark provides isSystemInDarkTheme()
+            darkCodeBlocks = isSystemInDarkTheme(),
+            onLinkClick = { url -> openLink(url) }
         ) {
-            MixedMarkdownLatex(
-                text = markdown,
-                textColor = if (isSystemInDarkTheme()) Color.White else Color.Black,
-                isStreaming = false
-            )
+            Markdown(content = markdown)
         }
     }
 }
@@ -137,14 +137,16 @@ $$
 
 避免在行内公式中使用未配对的 `$`；反引号代码中的 `$` 不会被当作公式。表格单元格中的公式也会参与宽度测量，内容过宽时由表格自身横向滚动。
 
+向 `Markdown` 传入 `onFormulaWidthMeasured = { widthDp -> ... }` 可获取公式宽度，回调参数单位为 dp。
+
 ### 流式文本
 
 接收模型输出时将 `isStreaming` 设为 `true`，结束后切换为 `false`：
 
 ```kotlin
-MixedMarkdownLatex(
-    text = partialResponse,
-    textColor = Color.Black,
+Markdown(
+    content = partialResponse,
+    color = Color.Black,
     isStreaming = responseIsRunning
 )
 ```
@@ -153,11 +155,11 @@ MixedMarkdownLatex(
 
 ## 🪡 宿主交互
 
-通过 `LocalCodeBlockHeader` 提供代码块工具栏：
+通过 `MarkdownTheme.codeBlockHeader` 提供代码块工具栏，也可直接提供 `LocalCodeBlockHeader`：
 
 ```kotlin
-CompositionLocalProvider(
-    LocalCodeBlockHeader provides { block ->
+MarkdownTheme(
+    codeBlockHeader = { block ->
         Row {
             BasicText(block.label)
             BasicText("复制", Modifier.clickable { onCopy(block.code) })
@@ -165,7 +167,7 @@ CompositionLocalProvider(
         }
     }
 ) {
-    MixedMarkdownLatex(text = text, textColor = Color.Black)
+    Markdown(content = text, color = Color.Black)
 }
 ```
 
@@ -173,21 +175,17 @@ CompositionLocalProvider(
 
 代码围栏的语言标签会做常见别名归一化，例如 `py`→`python`、`js`→`javascript`、`kt`→`kotlin`、`sh`→`shellscript`。TextMate grammar 可使用库内资源或通过下文的 `grammarProvider` 提供；没有对应 grammar 时仍显示代码、行号和横向滚动。工具栏回调可以读取 `block.code`、`block.language` 和 `block.boundsInWindow()`，复制、全屏和图标行为由宿主实现。
 
-默认不会自动打开链接，需要时注入：
+链接点击可直接传给当前渲染器；通过 `MarkdownTheme.onLinkClick` 可为整个子树设置默认行为：
 
 ```kotlin
-CompositionLocalProvider(
-    LocalMarkdownLinkHandler provides { url -> openLink(url) }
-) {
-    MixedMarkdownLatex(text = content, textColor = Color.Black)
-}
+Markdown(content = content, onLinkClick = { url -> openLink(url) })
 ```
 
 剪贴板、通知、全屏界面、返回手势和外部链接 Intent 均由宿主负责。
 
 ## 🧩 样式与组件扩展
 
-`MixedMarkdownLatex` 接受 `style: MarkdownStyle` 和 `components: MarkdownComponents`。未传入时分别读取 `LocalMarkdownStyle`、`LocalMarkdownComponents`。原有参数 `textColor` 仍是必填的正文基础颜色；`style.body.color` 等显式组件颜色可进一步覆盖它。`Color.Unspecified` 使用对应的继承色或主题默认值。
+`Markdown(content = ...)` 只需要传入内容。`modifier` 控制外层布局；`style` 与 `components` 默认读取 `MarkdownTheme` 注入的配置；`onLinkClick` 可直接处理当前渲染器的链接。正文颜色优先级为 `style.body.color`、入口参数 `color`、`MarkdownColors.text`；默认是黑色。`Color.Unspecified` 表示继承默认值。
 
 以下示例关闭链接下划线、覆盖行内代码和表格颜色，并独立设置原生选择手柄颜色：
 
@@ -211,7 +209,7 @@ val style = MarkdownStyle(
         columnAlignments = mapOf(1 to TextAlign.End)
     )
 )
-MixedMarkdownLatex(text = content, textColor = Color.Black, style = style)
+Markdown(content = content, color = Color.Black, style = style)
 ```
 
 示例中的类型来自 `com.mroldl001.m3l.*` 以及 Compose 的 `TextStyle`、`FontWeight`、`TextAlign`、`Color`、`dp`、`sp`。也可在父级通过 `CompositionLocalProvider(LocalMarkdownStyle provides style)` 注入；引用和表格单元格会继承配置。使用 `copy` 修改当前样式可保留其他设置；传入新的 `MarkdownStyle()` 会使用新对象的完整默认配置。
@@ -280,15 +278,15 @@ val style = LocalMarkdownStyle.current.let { current ->
 
 `MarkdownComponents` 对解析出的块提供以下接口：
 
-| 字段                  | 行为                                                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `leading`、`trailing` | `MarkdownBlockSlot`，分别显示在默认或替换内容的前后，与内容横向排列，可注入 Compose 图标                                           |
-| `actions`             | `MarkdownBlockSlot`，显示在整行下方，可注入复制按钮等操作                                                                          |
-| `blocks`              | 按 `ContentType` 注册 `MarkdownBlockRenderer`，接收块上下文及 `defaultContent`；可完全替换，或调用 `defaultContent()` 装饰内建组件 |
-| `resolveStyle`        | 接收继承样式所在的 `MarkdownBlockContext`，返回当前块的完整 `MarkdownStyle`；用 `context.style.copy(...)` 做局部覆盖               |
-| `modifier`            | 接收解析后的上下文，为整块提供 `Modifier`                                                                                          |
+| 字段                  | 行为                                                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `leading`、`trailing` | `MarkdownBlockSlot`，分别显示在默认或替换内容的前后，与内容横向排列，可注入 Compose 图标                                                 |
+| `actions`             | `MarkdownBlockSlot`，显示在整行下方，可注入复制按钮等操作                                                                                |
+| `blocks`              | 按 `MarkdownBlockType` 注册 `MarkdownBlockRenderer`，接收块上下文及 `defaultContent`；可完全替换，或调用 `defaultContent()` 装饰内建组件 |
+| `resolveStyle`        | 接收继承样式所在的 `MarkdownBlockContext`，返回当前块的完整 `MarkdownStyle`；用 `context.style.copy(...)` 做局部覆盖                     |
+| `modifier`            | 接收解析后的上下文，为整块提供 `Modifier`                                                                                                |
 
-`MarkdownBlockContext` 包含 `segment`（`type`、`content`、`info`）、同级 0 起始 `index`、`path`、`depth`、`style`。插槽、组件渲染器和 `modifier` 看到的是 `resolveStyle` 处理后的样式。`path` 从顶层块索引开始；引用内追加块索引，表格单元格追加行、列索引后再追加块索引，表头行索引为 0；`depth = path.size - 1`，包含表格坐标。路径随解析结构变化，不是跨编辑稳定 ID。
+`MarkdownBlockContext` 包含 `block`（`type`、`content`、`info`）、同级 0 起始 `index`、`path`、`depth`、`style`。插槽、组件渲染器和 `modifier` 看到的是 `resolveStyle` 处理后的样式。`path` 从顶层块索引开始；引用内追加块索引，表格单元格追加行、列索引后再追加块索引，表头行索引为 0；`depth = path.size - 1`，包含表格坐标。路径随解析结构变化，不是跨编辑稳定 ID。
 
 ```kotlin
 val decorateFormula: MarkdownBlockRenderer = { _, defaultContent ->
@@ -297,67 +295,33 @@ val decorateFormula: MarkdownBlockRenderer = { _, defaultContent ->
     }
 }
 val components = MarkdownComponents(
-    leading = { block ->
-        if (block.segment.type == ContentType.QUOTE) {
+    leading = { context ->
+        if (context.block.type == MarkdownBlockType.QUOTE) {
             Image(painter = quoteIcon, contentDescription = null, modifier = Modifier.size(16.dp))
         }
     },
-    actions = { block ->
-        if (block.segment.type == ContentType.CODE_BLOCK) {
-            BasicText("复制", Modifier.clickable { copyCode(block.segment.content) })
+    actions = { context ->
+        if (context.block.type == MarkdownBlockType.CODE_BLOCK) {
+            BasicText("复制", Modifier.clickable { copyCode(context.block.content) })
         }
     },
-    blocks = mapOf(ContentType.LATEX_BLOCK to decorateFormula),
-    resolveStyle = { block ->
-        if (block.segment.type == ContentType.QUOTE) {
-            block.style.copy(quote = block.style.quote.copy(barColor = Color(0xFF1565C0)))
+    blocks = mapOf(MarkdownBlockType.LATEX_BLOCK to decorateFormula),
+    resolveStyle = { context ->
+        if (context.block.type == MarkdownBlockType.QUOTE) {
+            context.style.copy(quote = context.style.quote.copy(barColor = Color(0xFF1565C0)))
         } else {
-            block.style
+            context.style
         }
     }
 )
-MixedMarkdownLatex(
-    text = content,
-    textColor = Color.Black,
+Markdown(
+    content = content,
+    color = Color.Black,
     components = components
 )
 ```
 
-`quoteIcon: Painter` 与 `copyCode` 由宿主提供。`defaultContent` 直接调用当前块的内建渲染；嵌套引用、表格中的子块仍应用继承的组件配置。`ContentType` 包括 `MARKDOWN`、`TABLE`、`CODE_BLOCK`、`INLINE_CODE`、`LATEX_INLINE`、`LATEX_BLOCK`、`QUOTE`、`HR`；普通段落中的行内链接、代码和公式随 Markdown 正文渲染，分别使用对应样式配置。可通过 `CompositionLocalProvider(LocalMarkdownComponents provides components)` 给整个子树设置插槽。
-
-### 场景驱动的接口检查
-
-| 宿主需求                     | 使用的接口                                                                                                                                         |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 在链接文字后加箭头           | `MarkdownLinkStyle.icon` 返回箭头 `Drawable`，并设置 `iconPlacement = MarkdownLinkIconPlacement.AfterText`；链接原文仍可选择、复制，长链接仍可换行 |
-| 点击某一张图片使其上下移动   | `MarkdownImageStyle.onClickWithContext` 定位被点图片，用 `verticalOffsetPx` 读取动画位移，`motionPadding` 预留移动空间                             |
-| 给代码块放复制或全屏按钮     | `LocalCodeBlockHeader` 可插入任意 Compose 内容，`CodeBlockContent` 提供代码、语言和窗口位置；也可使用 `MarkdownComponents.actions`                 |
-| 特定引用换色或加水印         | `MarkdownComponents.resolveStyle` 按路径覆盖引用颜色，`blocks[ContentType.QUOTE]` 可用 `defaultContent()` 装饰原组件                               |
-| 替换公式宏并点击块级公式复制 | `MarkdownLatexStyle.transform` 和 `onClick`                                                                                                        |
-| 表格按列对齐、交替染色       | `MarkdownTableStyle.columnAlignments`、`alternateBackground` 和 `resolveStyle`                                                                     |
-
-图片动画可由宿主控制，M3L 仅提供图片标识、点击时的 `TextView` 和按帧读取位移的入口：
-
-```kotlin
-val offsets = remember(content) { mutableMapOf<MarkdownImageReference, Float>() }
-val imageStyle = MarkdownImageStyle(
-    motionPadding = 8.dp,
-    verticalOffsetPx = { image -> offsets[image] ?: 0f },
-    onClickWithContext = { event ->
-        val distance = 6f * event.textView.resources.displayMetrics.density
-        android.animation.ValueAnimator.ofFloat(0f, -distance, 0f).apply {
-            duration = 280L
-            addUpdateListener { animator ->
-                offsets[event.image] = animator.animatedValue as Float
-                event.textView.postInvalidateOnAnimation()
-            }
-        }.start()
-    }
-)
-MixedMarkdownLatex(text = content, textColor = Color.Black, style = MarkdownStyle(image = imageStyle))
-```
-
-`MarkdownImageReference` 的 `start`、`end` 是当前渲染后 `TextView` 文本中的位置；`destination` 是图片地址，因此相同地址的多张图片也能分别处理。文本变化后位置会变化，示例用 `remember(content)` 清除旧位置。`verticalOffsetPx` 在原生绘制时调用，返回像素；位移变化后调用 `TextView.postInvalidateOnAnimation()` 即可重绘。若同时设置 `onClick` 与 `onClickWithContext`，会依次调用两者。
+`quoteIcon: Painter` 与 `copyCode` 由宿主提供。`defaultContent` 直接调用当前块的内建渲染；嵌套引用、表格中的子块仍应用继承的组件配置。`MarkdownBlockType` 包括 `MARKDOWN`、`TABLE`、`CODE_BLOCK`、`INLINE_CODE`、`LATEX_INLINE`、`LATEX_BLOCK`、`QUOTE`、`HR`；普通段落中的行内链接、代码和公式随 Markdown 正文渲染，分别使用对应样式配置。可通过 `CompositionLocalProvider(LocalMarkdownComponents provides components)` 给整个子树设置插槽。
 
 ### 原生扩展
 

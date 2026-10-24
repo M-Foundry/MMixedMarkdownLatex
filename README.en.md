@@ -4,7 +4,7 @@
 
 </div>
 
-MMixedMarkdown LaTeX（M3L） is an Android Jetpack Compose renderer for Markdown, LaTeX, and syntax-highlighted code, Extracted from [MChat](https://github.com/MChat-code/MChat), M3L focuses on rendering only. 
+M3L is an Android Jetpack Compose renderer for Markdown, LaTeX, and syntax-highlighted code. Extracted from [MChat](https://github.com/MChat-code/MChat), it focuses on content rendering.
 
 **Languages:** [简体中文](README.md) | English
 
@@ -44,9 +44,11 @@ Then add the dependency to the app or library module:
 
 ```kotlin
 dependencies {
-    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.0.2")
+    implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.1.0")
 }
 ```
+
+The source package and Android namespace are `com.mroldl001.m3l`. `MMixedMarkdownLatex` in the JitPack coordinate is the GitHub repository name. The local Maven coordinate is `com.mroldl001:m3l:1.1.0`.
 
 ### Build a local distribution
 
@@ -62,53 +64,54 @@ On Windows:
 .\gradlew.bat bundleRenderer
 ```
 
-The generated `build/distributions/m3l-renderer-1.0.2.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
+The generated `build/distributions/m3l-renderer-1.1.0.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
 
 Add the unpacked repository to `settings.gradle.kts`, then add:
 
 ```kotlin
-implementation("com.mroldl001:mmixedmarkdownlatex:1.0.2")
+implementation("com.mroldl001:m3l:1.1.0")
 ```
 
 ## 📖 Basic usage
 
 ```kotlin
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import com.mroldl001.m3l.MixedMarkdownLatex
+import com.mroldl001.m3l.*
 
 @Composable
 fun RendererScreen(text: String, streaming: Boolean) {
-    MixedMarkdownLatex(text = text, textColor = Color.Black, isStreaming = streaming)
+    Markdown(content = text, isStreaming = streaming)
 }
 ```
 
-Use `LocalMarkdownRendererTheme` for renderer colors and `LocalCodeBlockDark` for code block brightness. M3L does not manage page scrolling.
+Use `MarkdownTheme` to share colors, styles, components, code block brightness, link handling, and a code block header. Omitted arguments inherit their parent values; direct CompositionLocal injection remains available. M3L does not read `MaterialTheme` or manage page scrolling.
 
-`text` is a Markdown string. The renderer recognizes Markdown, tables, blockquotes, task lists, basic HTML, fenced code, and LaTeX. It emits a full-width Compose column, so place it inside the host's `LazyColumn`, `Column.verticalScroll`, or another scrolling container:
+For parsing only, call `parseMarkdownBlocks(content)` to obtain `List<MarkdownBlock>`, with block types represented by `MarkdownBlockType`. The optional `allowUnclosedCodeFence` argument defaults to false.
+
+`content` is a Markdown string. The renderer recognizes Markdown, tables, blockquotes, task lists, basic HTML, fenced code, and LaTeX. It emits a full-width Compose column, so place it inside the host's `LazyColumn`, `Column.verticalScroll`, or another scrolling container:
 
 ```kotlin
 LazyColumn {
     item {
-        CompositionLocalProvider(
-            LocalMarkdownRendererTheme provides MarkdownRendererTheme(
+        MarkdownTheme(
+            colors = MarkdownColors(
                 primary = Color(0xFF6750A4),
+                text = if (isSystemInDarkTheme()) Color.White else Color.Black,
                 surface = Color.White,
                 outlineVariant = Color(0xFFCAC4D0)
             ),
-            LocalCodeBlockDark provides isSystemInDarkTheme()
+            darkCodeBlocks = isSystemInDarkTheme(),
+            onLinkClick = { url -> openLink(url) }
         ) {
-            MixedMarkdownLatex(
-                text = markdown,
-                textColor = if (isSystemInDarkTheme()) Color.White else Color.Black,
-                isStreaming = false
-            )
+            Markdown(content = markdown)
         }
     }
 }
 ```
 
 ### LaTeX, tables, and streaming
+
+Pass `onFormulaWidthMeasured = { widthDp -> ... }` to `Markdown` to receive formula widths in dp.
 
 Use `$...$` or `\\(...\\)` for inline formulas, and a standalone `$$...$$` or `\\[...\\]` block for display formulas. Formulas are rendered as bitmaps on a background dispatcher and cached by formula, color, size, and display mode. Until a bitmap is ready, the source is shown as monospace fallback text; invalid formulas also remain readable. Wide formulas and tables scroll horizontally.
 
@@ -128,23 +131,19 @@ During model output, pass `isStreaming = true`, then switch it to `false` when t
 
 ## 🪡 Host interaction
 
-Use `LocalCodeBlockHeader` to provide a custom toolbar. `CodeBlockContent` exposes the raw code, language, highlighted lines, palette, and block bounds. `CodeBlockBody` can be reused in a host-owned fullscreen screen.
+Use `MarkdownTheme.codeBlockHeader` or provide `LocalCodeBlockHeader` directly for a custom toolbar. `CodeBlockContent` exposes the raw code, language, highlighted lines, palette, and block bounds. `CodeBlockBody` can be reused in a host-owned fullscreen screen.
 
-Use `LocalMarkdownLinkHandler` when the host wants to handle links:
+Pass link handling directly to the renderer, or use `MarkdownTheme.onLinkClick` for a shared default:
 
 ```kotlin
-CompositionLocalProvider(
-    LocalMarkdownLinkHandler provides { url -> openLink(url) }
-) {
-    MixedMarkdownLatex(text = content, textColor = Color.Black)
-}
+Markdown(content = content, onLinkClick = { url -> openLink(url) })
 ```
 
 Code fence labels are normalized (`py` to `python`, `js` to `javascript`, `kt` to `kotlin`, `sh` to `shellscript`, and more). TextMate grammars can come from bundled resources or the `grammarProvider` described below; an unknown language still gets readable code, line numbers, and horizontal scrolling. `CodeBlockContent` exposes the raw code, normalized language, highlighted lines, palette, and a lazy `boundsInWindow` lookup. Copy, fullscreen, icons, and clipboard actions remain host responsibilities.
 
 ## 🧩 Styling and component extensions
 
-`MixedMarkdownLatex` accepts `style: MarkdownStyle` and `components: MarkdownComponents`, defaulting to `LocalMarkdownStyle` and `LocalMarkdownComponents`. The required `textColor` remains the base text color; explicit component colors such as `style.body.color` can override it. `Color.Unspecified` uses the corresponding inherited or theme default color.
+`Markdown(content = ...)` requires only the content. Use `modifier` for the outer layout; `style` and `components` inherit values from `MarkdownTheme`. Pass `onLinkClick` to handle links directly for this renderer. Text color precedence is `style.body.color`, the `color` argument, then `MarkdownColors.text`, which defaults to black. `Color.Unspecified` inherits the default.
 
 This example removes link underlines, overrides inline code and table colors, and sets native selection handle colors independently:
 
@@ -168,7 +167,7 @@ val style = MarkdownStyle(
         columnAlignments = mapOf(1 to TextAlign.End)
     )
 )
-MixedMarkdownLatex(text = content, textColor = Color.Black, style = style)
+Markdown(content = content, color = Color.Black, style = style)
 ```
 
 Renderer types are in `com.mroldl001.m3l.*`; `TextStyle`, `FontWeight`, `TextAlign`, `Color`, `dp`, and `sp` come from Compose. A parent can provide `CompositionLocalProvider(LocalMarkdownStyle provides style)`; nested blockquotes and table cells inherit the configuration. Use `copy` on the current style to preserve its other settings. Passing a new `MarkdownStyle()` uses that object's complete defaults.
@@ -241,11 +240,11 @@ Block formulas also support `blockAlignment`, `blockPadding`, `fallbackStyle`, `
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `leading`, `trailing` | `MarkdownBlockSlot` content before and after the built-in or replacement content, arranged horizontally; suitable for Compose icons                                     |
 | `actions`             | `MarkdownBlockSlot` content below the row, such as copy buttons                                                                                                         |
-| `blocks`              | Maps `ContentType` to `MarkdownBlockRenderer`. It receives a block context and `defaultContent`; fully replace a component or decorate it by calling `defaultContent()` |
+| `blocks`              | Maps `MarkdownBlockType` to `MarkdownBlockRenderer`. It receives a block context and `defaultContent`; fully replace a component or decorate it by calling `defaultContent()` |
 | `resolveStyle`        | Receives `MarkdownBlockContext` with inherited styles and returns the current block's complete `MarkdownStyle`. Use `context.style.copy(...)` for selective overrides   |
 | `modifier`            | Receives the resolved context and supplies a `Modifier` for the whole block                                                                                             |
 
-`MarkdownBlockContext` contains `segment` (`type`, `content`, `info`), zero-based sibling `index`, `path`, `depth`, and `style`. Slots, renderers, and `modifier` receive the style returned by `resolveStyle`. A `path` starts with the top-level block index; nested blockquotes append block indices, and table cells append row and column indices followed by block indices. Header rows use index 0. `depth = path.size - 1`, including table coordinates. Paths reflect the parsed structure and are not stable IDs across edits.
+`MarkdownBlockContext` contains `block` (`type`, `content`, `info`), zero-based sibling `index`, `path`, `depth`, and `style`. Slots, renderers, and `modifier` receive the style returned by `resolveStyle`. A `path` starts with the top-level block index; nested blockquotes append block indices, and table cells append row and column indices followed by block indices. Header rows use index 0. `depth = path.size - 1`, including table coordinates. Paths reflect the parsed structure and are not stable IDs across edits.
 
 ```kotlin
 val decorateFormula: MarkdownBlockRenderer = { _, defaultContent ->
@@ -254,63 +253,29 @@ val decorateFormula: MarkdownBlockRenderer = { _, defaultContent ->
     }
 }
 val components = MarkdownComponents(
-    leading = { block ->
-        if (block.segment.type == ContentType.QUOTE) {
+    leading = { context ->
+        if (context.block.type == MarkdownBlockType.QUOTE) {
             Image(painter = quoteIcon, contentDescription = null, modifier = Modifier.size(16.dp))
         }
     },
-    actions = { block ->
-        if (block.segment.type == ContentType.CODE_BLOCK) {
-            BasicText("Copy", Modifier.clickable { copyCode(block.segment.content) })
+    actions = { context ->
+        if (context.block.type == MarkdownBlockType.CODE_BLOCK) {
+            BasicText("Copy", Modifier.clickable { copyCode(context.block.content) })
         }
     },
-    blocks = mapOf(ContentType.LATEX_BLOCK to decorateFormula),
-    resolveStyle = { block ->
-        if (block.segment.type == ContentType.QUOTE) {
-            block.style.copy(quote = block.style.quote.copy(barColor = Color(0xFF1565C0)))
+    blocks = mapOf(MarkdownBlockType.LATEX_BLOCK to decorateFormula),
+    resolveStyle = { context ->
+        if (context.block.type == MarkdownBlockType.QUOTE) {
+            context.style.copy(quote = context.style.quote.copy(barColor = Color(0xFF1565C0)))
         } else {
-            block.style
+            context.style
         }
     }
 )
-MixedMarkdownLatex(text = content, textColor = Color.Black, components = components)
+Markdown(content = content, color = Color.Black, components = components)
 ```
 
-The host supplies `quoteIcon: Painter` and `copyCode`. `defaultContent` calls the current block's built-in renderer directly; child blocks in nested blockquotes and tables still inherit component configuration. `ContentType` includes `MARKDOWN`, `TABLE`, `CODE_BLOCK`, `INLINE_CODE`, `LATEX_INLINE`, `LATEX_BLOCK`, `QUOTE`, and `HR`. Inline links, code, and formulas inside ordinary paragraphs are rendered with the Markdown body and use their corresponding style configuration. `CompositionLocalProvider(LocalMarkdownComponents provides components)` configures slots for a subtree.
-
-### Developer scenarios checked against the API
-
-| Host requirement                                            | Available interface                                                                                                                                                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Put an arrow after link text                                | Return an arrow `Drawable` from `MarkdownLinkStyle.icon` and set `iconPlacement = MarkdownLinkIconPlacement.AfterText`; the original link text remains selectable, copyable, and wrappable |
-| Move one clicked image up and down                          | `MarkdownImageStyle.onClickWithContext` identifies the image; `verticalOffsetPx` reads its animation position; `motionPadding` reserves space                                              |
-| Add copy or fullscreen controls to code blocks              | `LocalCodeBlockHeader` accepts Compose content and `CodeBlockContent` supplies the code, language, and window bounds; `MarkdownComponents.actions` is another option                       |
-| Recolor or add a watermark to one quote                     | `MarkdownComponents.resolveStyle` can override quote color by path; `blocks[ContentType.QUOTE]` can decorate `defaultContent()`                                                            |
-| Transform formula macros and tap a block formula to copy it | `MarkdownLatexStyle.transform` and `onClick`                                                                                                                                               |
-| Align table columns and alternate row colors                | `MarkdownTableStyle.columnAlignments`, `alternateBackground`, and `resolveStyle`                                                                                                           |
-
-The host drives image animation; M3L supplies an image identifier, the clicked `TextView`, and a draw offset hook:
-
-```kotlin
-val offsets = remember(content) { mutableMapOf<MarkdownImageReference, Float>() }
-val imageStyle = MarkdownImageStyle(
-    motionPadding = 8.dp,
-    verticalOffsetPx = { image -> offsets[image] ?: 0f },
-    onClickWithContext = { event ->
-        val distance = 6f * event.textView.resources.displayMetrics.density
-        android.animation.ValueAnimator.ofFloat(0f, -distance, 0f).apply {
-            duration = 280L
-            addUpdateListener { animator ->
-                offsets[event.image] = animator.animatedValue as Float
-                event.textView.postInvalidateOnAnimation()
-            }
-        }.start()
-    }
-)
-MixedMarkdownLatex(text = content, textColor = Color.Black, style = MarkdownStyle(image = imageStyle))
-```
-
-`MarkdownImageReference.start` and `end` are offsets in the currently rendered `TextView` text; `destination` is the URL, allowing identical URLs at different positions to be animated independently. Text edits change those offsets, so the example resets its map with `remember(content)`. `verticalOffsetPx` runs during native drawing and returns pixels; call `TextView.postInvalidateOnAnimation()` after an offset changes. When both `onClick` and `onClickWithContext` are set, both run in that order.
+The host supplies `quoteIcon: Painter` and `copyCode`. `defaultContent` calls the current block's built-in renderer directly; child blocks in nested blockquotes and tables still inherit component configuration. `MarkdownBlockType` includes `MARKDOWN`, `TABLE`, `CODE_BLOCK`, `INLINE_CODE`, `LATEX_INLINE`, `LATEX_BLOCK`, `QUOTE`, and `HR`. Inline links, code, and formulas inside ordinary paragraphs are rendered with the Markdown body and use their corresponding style configuration. `CompositionLocalProvider(LocalMarkdownComponents provides components)` configures slots for a subtree.
 
 ### Native extensions
 

@@ -165,7 +165,7 @@ internal fun LatexInlineLine(
     modifier: Modifier = Modifier,
     rendererStyle: MarkdownStyle = LocalMarkdownStyle.current
 ) {
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     MarkdownText(
         markdown = line,
         modifier = modifier.fillMaxWidth(),

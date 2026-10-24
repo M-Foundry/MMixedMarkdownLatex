@@ -73,7 +73,7 @@ internal fun MarkdownText(
     rendererStyle: MarkdownStyle = LocalMarkdownStyle.current
 ) {
     val context = LocalContext.current
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     val linkHandler = LocalMarkdownLinkHandler.current
     val density = LocalDensity.current
     val effectiveStyle = TextStyle(fontSize = 15.sp, lineHeight = 22.sp).merge(style)

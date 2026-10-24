@@ -24,44 +24,37 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
-/**
- * 渲染库自带的主题参数。调用方用 CompositionLocalProvider(LocalMarkdownRendererTheme provides ...)
- * 注入 primary / surface / outlineVariant，渲染库不读取 MaterialTheme。
- */
-data class MarkdownRendererTheme(
-    val primary: Color,
-    val surface: Color,
-    val outlineVariant: Color
+data class MarkdownColors(
+    val primary: Color = Color.Black,
+    val surface: Color = Color.White,
+    val outlineVariant: Color = Color.LightGray,
+    val text: Color = Color.Black
 )
 
-val LocalMarkdownRendererTheme = compositionLocalOf {
-    MarkdownRendererTheme(
-        primary = Color.Black,
-        surface = Color.White,
-        outlineVariant = Color.LightGray
-    )
-}
+val LocalMarkdownColors = compositionLocalOf { MarkdownColors() }
 
 /** The host decides how to open links. No external activity is launched by default. */
 val LocalMarkdownLinkHandler = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 @Composable
-fun MixedMarkdownLatex(
-    text: String,
-    textColor: Color,
+fun Markdown(
+    content: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    style: MarkdownStyle = LocalMarkdownStyle.current,
+    components: MarkdownComponents = LocalMarkdownComponents.current,
     isStreaming: Boolean = false,
     compact: Boolean = false,
-    onLatexWidthMeasured: ((Float) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    style: MarkdownStyle = LocalMarkdownStyle.current,
-    components: MarkdownComponents = LocalMarkdownComponents.current
+    onLinkClick: ((String) -> Unit)? = LocalMarkdownLinkHandler.current,
+    onFormulaWidthMeasured: ((widthDp: Float) -> Unit)? = null
 ) {
-    val latestText by rememberUpdatedState(text)
+    val textColor = color.markdownColorOr(LocalMarkdownColors.current.text)
+    val latestText by rememberUpdatedState(content)
     var renderedText by remember {
-        mutableStateOf(if (isStreaming) stabilizeStreamingMarkdown(text) else text)
+        mutableStateOf(if (isStreaming) stabilizeStreamingMarkdown(content) else content)
     }
-    LaunchedEffect(text, isStreaming) {
-        if (!isStreaming) renderedText = text
+    LaunchedEffect(content, isStreaming) {
+        if (!isStreaming) renderedText = content
     }
     LaunchedEffect(isStreaming, style.streamingIntervalMillis) {
         if (!isStreaming) return@LaunchedEffect
@@ -71,17 +64,18 @@ fun MixedMarkdownLatex(
             delay(style.streamingIntervalMillis)
         }
     }
-    val displayText = if (isStreaming) renderedText else text
+    val displayText = if (isStreaming) renderedText else content
     val segments by remember(displayText) {
-        derivedStateOf { splitContent(normalizeHtmlToMarkdown(displayText), allowUnclosedCodeFence = true) }
+        derivedStateOf { parseMarkdownBlocks(normalizeHtmlToMarkdown(displayText), allowUnclosedCodeFence = true) }
     }
 
     CompositionLocalProvider(
         LocalMarkdownStyle provides style,
-        LocalMarkdownComponents provides components
+        LocalMarkdownComponents provides components,
+        LocalMarkdownLinkHandler provides onLinkClick
     ) {
         Column(modifier = modifier.fillMaxWidth()) {
-            MarkdownBlocks(segments, textColor, compact, onLatexWidthMeasured, style, components)
+            MarkdownBlocks(segments, textColor, compact, onFormulaWidthMeasured, style, components)
         }
     }
 }
@@ -94,7 +88,7 @@ internal fun QuoteBlockView(
     compact: Boolean = false,
     onLatexWidthMeasured: ((Float) -> Unit)? = null
 ) {
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     val style = LocalMarkdownStyle.current
     val quoteStyle = style.quote
     val quoteBar = quoteStyle.barColor.markdownColorOr(theme.primary.copy(alpha = 0.6f))
@@ -117,11 +111,11 @@ internal fun QuoteBlockView(
             val body = style.body.merge(quoteStyle.textStyle).let {
                 if (quoteStyle.textColor == Color.Unspecified) it else it.copy(color = quoteStyle.textColor)
             }
-            MixedMarkdownLatex(
-                text = content,
-                textColor = quoteStyle.textColor.markdownColorOr(textColor),
+            Markdown(
+                content = content,
+                color = quoteStyle.textColor.markdownColorOr(textColor),
                 compact = compact,
-                onLatexWidthMeasured = onLatexWidthMeasured,
+                onFormulaWidthMeasured = onLatexWidthMeasured,
                 style = style.copy(body = body)
             )
         }
@@ -130,7 +124,7 @@ internal fun QuoteBlockView(
 
 @Composable
 internal fun HrView() {
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     val style = LocalMarkdownStyle.current.divider
     val hrColor = style.color.markdownColorOr(theme.primary.copy(alpha = 0.4f))
     Box(
@@ -153,7 +147,7 @@ internal fun MarkdownTableView(
     markdown: String,
     textColor: Color
 ) {
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     val style = LocalMarkdownStyle.current
     val tableStyle = style.table
     val parentPath = LocalMarkdownPath.current
@@ -244,12 +238,12 @@ internal fun MarkdownTableView(
                                 .let { if (alignment == null) it else it.copy(textAlign = alignment) }
                             CompositionLocalProvider(LocalMarkdownPath provides (parentPath + rowIndex + columnIndex)) {
                                 Box(Modifier.padding(tableStyle.cellPadding)) {
-                                    MixedMarkdownLatex(
-                                        text = cells.getOrNull(columnIndex).orEmpty().replace("\\|", "|"),
-                                        textColor = foreground.markdownColorOr(textColor),
+                                    Markdown(
+                                        content = cells.getOrNull(columnIndex).orEmpty().replace("\\|", "|"),
+                                        color = foreground.markdownColorOr(textColor),
                                         compact = true,
                                         style = style.copy(body = cellTextStyle),
-                                        onLatexWidthMeasured = { width ->
+                                        onFormulaWidthMeasured = { width ->
                                             val previous = renderedFormulaWidths[columnIndex] ?: 0f
                                             if (width > previous) renderedFormulaWidths[columnIndex] = width
                                         }

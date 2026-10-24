@@ -10,7 +10,9 @@ data class MarkdownBlockContext(
     val path: List<Int>,
     val depth: Int,
     val style: MarkdownStyle
-)
+) {
+    val block: MarkdownBlock get() = segment
+}
 
 typealias MarkdownBlockSlot = @Composable (MarkdownBlockContext) -> Unit
 typealias MarkdownBlockRenderer = @Composable (MarkdownBlockContext, @Composable () -> Unit) -> Unit

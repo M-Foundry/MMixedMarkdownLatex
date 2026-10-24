@@ -60,7 +60,7 @@ private fun DefaultMarkdownBlock(
     onLatexWidthMeasured: ((Float) -> Unit)?
 ) {
     val style = LocalMarkdownStyle.current
-    val theme = LocalMarkdownRendererTheme.current
+    val theme = LocalMarkdownColors.current
     when (segment.type) {
         ContentType.MARKDOWN, ContentType.INLINE_CODE -> MarkdownText(
             markdown = segment.content,

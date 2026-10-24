@@ -143,7 +143,8 @@ internal fun normalizeEscapedEmphasis(markdown: String): String {
     return output.toString()
 }
 
-fun splitContent(text: String, allowUnclosedCodeFence: Boolean = false): List<ContentSegment> {
+fun parseMarkdownBlocks(content: String, allowUnclosedCodeFence: Boolean = false): List<MarkdownBlock> {
+    val text = content
     val segments = mutableListOf<ContentSegment>()
     var plainStart = 0
     var cursor = 0
