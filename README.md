@@ -4,7 +4,7 @@
 
 </div>
 
-M3L 是一个面向 Android Jetpack Compose 的 Markdown、LaTeX 与代码高亮渲染器，它从 [MChat](https://github.com/MChat-code/MChat) 抽离而来，专注于内容渲染。
+M3L 是一个基于组合优于继承原则设计的，面向 Android Jetpack Compose 的渐进式富文本渲染库，它从 [MChat](https://github.com/MChat-code/MChat) 抽离而来，支持渲染并混排 Markdown、LaTeX、代码块、表格等内容，提供主题与组件级组合配置、单块样式覆盖、代码高亮、流式渲染和原生扩展能力。
 
 **语言：** 简体中文 | [English](README.en.md)
 
@@ -20,9 +20,10 @@ M3L 是一个面向 Android Jetpack Compose 的 Markdown、LaTeX 与代码高亮
 - 行内与块级 LaTeX 公式，包含化学公式等扩展
 - TextMate 代码语法高亮、语言标签、行号和横向滚动
 - 支持流式文本，暂缓显示未闭合公式、代码块和表格
-- 代码块工具栏与链接处理由宿主注入
-- 开放组件样式、单块覆盖、图标与操作插槽、自定义渲染和原生扩展入口
-- 语法文件、公式字体和 LaTeX 引擎随库发布
+- 使用渐进式 API 设计，提供从 `Markdown(content = ...)` 快速使用，按需增加样式、组件和行为配置的能力
+- `MarkdownTheme` 统一注入主题、组件、链接处理和代码块工具栏
+- 以组合优于继承原则设计，通过样式对象、插槽、单块覆盖和自定义渲染扩展能力
+- 渲染外观、宿主行为和原生扩展分别提供独立入口
 
 ## 🚀 快速开始
 
@@ -47,8 +48,6 @@ dependencies {
     implementation("com.github.M-Foundry:MMixedMarkdownLatex:1.1.0")
 }
 ```
-
-源码包名和 Android namespace 均为 `com.mroldl001.m3l`。JitPack 坐标中的 `MMixedMarkdownLatex` 是 GitHub 仓库名；本地 Maven 发布名为 `com.mroldl001:m3l:1.1.0`。
 
 ## 📖 基本用法
 
