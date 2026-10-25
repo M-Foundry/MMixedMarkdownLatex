@@ -50,35 +50,6 @@ dependencies {
 
 源码包名和 Android namespace 均为 `com.mroldl001.m3l`。JitPack 坐标中的 `MMixedMarkdownLatex` 是 GitHub 仓库名；本地 Maven 发布名为 `com.mroldl001:m3l:1.1.0`。
 
-### 本地构建发行包
-
-安装 JDK 17 和 Android SDK Platform 36，通过 `ANDROID_HOME` 或 `local.properties` 的 `sdk.dir` 指定 SDK 路径，然后在项目根目录运行（Wrapper 固定为 Gradle 8.13）：
-
-```shell
-sh ./gradlew bundleRenderer
-```
-
-Windows 使用 `.\gradlew.bat bundleRenderer`。生成的 `build/distributions/m3l-renderer-1.1.0.zip` 包含本地 Maven 仓库、AAR、sources JAR、Gradle 元数据和许可证。JitPack 用户不需要执行这个任务。
-
-解压后，在目标项目的 `settings.gradle.kts` 添加：
-
-```kotlin
-dependencyResolutionManagement {
-    repositories {
-        maven { url = uri("/absolute/path/to/unpacked-renderer") }
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
-```
-
-然后添加依赖：
-
-```kotlin
-implementation("com.mroldl001:m3l:1.1.0")
-```
-
 ## 📖 基本用法
 
 ```kotlin
@@ -94,7 +65,7 @@ fun RendererScreen(text: String, streaming: Boolean) {
 }
 ```
 
-`content` 可以直接是 Markdown 字符串。渲染器会识别 Markdown、表格、引用、任务列表、基础 HTML、代码围栏和 LaTeX；渲染结果本身是一个填满父容器宽度的 `Column`。
+`content` 可以直接是 Markdown 字符串。渲染器会识别 Markdown、表格、引用、任务列表、基础 HTML、代码围栏和 LaTeX；渲染结果本身是一个填满父容器宽度的 `Column`，请将它放入宿主的 `LazyColumn`、`Column.verticalScroll` 或其他滚动容器中。
 
 只需要解析内容时，可调用 `parseMarkdownBlocks(content)` 获取 `List<MarkdownBlock>`，块类型为 `MarkdownBlockType`。可选参数 `allowUnclosedCodeFence` 默认为 false。
 
@@ -153,7 +124,7 @@ Markdown(
 
 流式期间渲染器会暂缓未闭合的 LaTeX、代码围栏和表格，内部每约 80 ms 更新一次稳定文本；这样不会因为模型尚未输出结束分隔符而反复创建错误的中间布局。停止流式后会立即使用完整文本。宿主仍应使用稳定的 `key`，避免在列表中频繁销毁该 Composable。
 
-## 🪡 宿主交互
+## 🪡 宿主交互与行为
 
 通过 `MarkdownTheme.codeBlockHeader` 提供代码块工具栏，也可直接提供 `LocalCodeBlockHeader`：
 
@@ -185,6 +156,8 @@ Markdown(content = content, onLinkClick = { url -> openLink(url) })
 
 ## 🧩 样式与组件扩展
 
+本节只介绍渲染外观和组件替换；链接跳转、复制、全屏、剪贴板和通知等宿主行为见上节。
+
 `Markdown(content = ...)` 只需要传入内容。`modifier` 控制外层布局；`style` 与 `components` 默认读取 `MarkdownTheme` 注入的配置；`onLinkClick` 可直接处理当前渲染器的链接。正文颜色优先级为 `style.body.color`、入口参数 `color`、`MarkdownColors.text`；默认是黑色。`Color.Unspecified` 表示继承默认值。
 
 以下示例关闭链接下划线、覆盖行内代码和表格颜色，并独立设置原生选择手柄颜色：
@@ -214,21 +187,25 @@ Markdown(content = content, color = Color.Black, style = style)
 
 示例中的类型来自 `com.mroldl001.m3l.*` 以及 Compose 的 `TextStyle`、`FontWeight`、`TextAlign`、`Color`、`dp`、`sp`。也可在父级通过 `CompositionLocalProvider(LocalMarkdownStyle provides style)` 注入；引用和表格单元格会继承配置。使用 `copy` 修改当前样式可保留其他设置；传入新的 `MarkdownStyle()` 会使用新对象的完整默认配置。
 
-### 全部样式字段
+### 样式字段
+
+| 类型                      | 字段与用途                                                                                                                                                                                                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MarkdownStyle`           | `body` 正文排版；`headings` 按标题级别 1–6 覆盖排版；`paragraphSpacing` 段间距；`listIndent` 列表缩进；`bulletColor`、`bulletWidth` 列表圆点；`streamingIntervalMillis` 流式刷新间隔，默认 80，必须大于 0                                                                                                      |
+| `MarkdownStyle` 子配置    | `link`、`inlineCode`、`selection`、`codeBlock`、`quote`、`divider`、`table`、`latex`、`image`、`native`，字段如下                                                                                                                                                                                              |
+| `MarkdownLinkStyle`       | `color`、`underline`、`textStyle: SpanStyle`；`autoLinkMask` 控制自动识别，默认网页和邮箱，设为 0 关闭自动识别；`icon: (String) -> Drawable?` 按链接地址提供行内图标，返回 null 不显示；`iconSize` 默认 16.dp，`iconGap` 默认 4.dp；`iconPlacement` 默认 `BeforeText`，可设为 `AfterText` 将图标放在链接文字后 |
+| `MarkdownInlineCodeStyle` | `color`、`backgroundColor`、`cornerRadius`、`fontFamily`、`fontWeight`、`fontStyle`、`sizeScale`；默认等宽字体、4.dp 圆角、0.95 倍字号                                                                                                                                                                         |
+| `MarkdownSelectionStyle`  | `enabled` 控制正文文本选择；`handleColor`、`backgroundColor` 独立覆盖手柄和选区颜色。未指定时跟随主题主色；原生选择手柄着色需要 Android API 29+                                                                                                                                                                |
+
+#### 布局、表格与媒体样式
 
 | 类型                            | 字段与用途                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MarkdownStyle`                 | `body` 正文排版；`headings` 按标题级别 1–6 覆盖排版；`paragraphSpacing` 段间距；`listIndent` 列表缩进；`bulletColor`、`bulletWidth` 列表圆点；`streamingIntervalMillis` 流式刷新间隔，默认 80，必须大于 0                                                                                                                                                                                                                                         |
-| `MarkdownStyle` 子配置          | `link`、`inlineCode`、`selection`、`codeBlock`、`quote`、`divider`、`table`、`latex`、`image`、`native`，字段如下                                                                                                                                                                                                                                                                                                                                 |
-| `MarkdownLinkStyle`             | `color`、`underline`、`textStyle: SpanStyle`；`autoLinkMask` 控制自动识别，默认网页和邮箱，设为 0 关闭自动识别；`icon: (String) -> Drawable?` 按链接地址提供行内图标，返回 null 不显示；`iconSize` 默认 16.dp，`iconGap` 默认 4.dp；`iconPlacement` 默认 `BeforeText`，可设为 `AfterText` 将图标放在链接文字后                                                                                                                                    |
-| `MarkdownInlineCodeStyle`       | `color`、`backgroundColor`、`cornerRadius`、`fontFamily`、`fontWeight`、`fontStyle`、`sizeScale`；默认等宽字体、4.dp 圆角、0.95 倍字号                                                                                                                                                                                                                                                                                                            |
-| `MarkdownSelectionStyle`        | `enabled` 控制正文文本选择；`handleColor`、`backgroundColor` 独立覆盖手柄和选区颜色。未指定时跟随主题主色；原生选择手柄着色需要 Android API 29+                                                                                                                                                                                                                                                                                                   |
 | `MarkdownQuoteStyle`            | `barColor`、`backgroundColor`、`textColor`、`textStyle`；`barWidth`、`barShape` 控制竖线；`spacing` 控制竖线到正文的距离；`padding`、`contentPadding` 控制外部和内容间距                                                                                                                                                                                                                                                                          |
 | `MarkdownDividerStyle`          | `color`、`thickness`、`shape`、`padding`                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `MarkdownTableStyle` 颜色与排版 | `borderColor`、`headerBackground`、`bodyBackground`、`alternateBackground`、`headerTextColor`、`bodyTextColor`、`headerTextStyle`、`bodyTextStyle`                                                                                                                                                                                                                                                                                                |
 | `MarkdownTableStyle` 布局       | `borderWidth`、`cellBorderWidth`、`shape`、`padding`、`cellPadding`；`minColumnWidth`、`maxColumnWidth` 限制自动列宽；`columnWidths` 按 0 起始列索引指定列宽，未指定的列自动测量；`columnAlignments` 按列覆盖文字对齐；`cellAlignment` 主要控制内容竖直位置，正文占满列宽，横向文字由 `columnAlignments` 或 `TextStyle.textAlign` 决定；`respectMarkdownAlignment` 默认 false，开启后读取 Markdown 分隔行的冒号对齐，显式 `columnAlignments` 优先 |
 | `MarkdownImageStyle`            | `width`、`height`、`cornerRadius`；`loadingDrawable`、`failureDrawable` 提供原生占位图；`onClick` 接收图片地址；`imageLoader` 注入 Coil `ImageLoader`；`configureRequest` 接收 `ImageRequest.Builder` 和地址，配置请求；`onClickWithContext` 接收图片位置和 `TextView`；`verticalOffsetPx` 按图片位置返回绘制时的纵向位移像素；`motionPadding` 为位移动画预留上下空间                                                                             |
-| `MarkdownNativeConfiguration`   | `configureMarkwon: (Markwon.Builder) -> Unit`、`configureTextView: (TextView) -> Unit`、`transformSpans: (SpannableStringBuilder) -> Unit`，用于高级原生扩展                                                                                                                                                                                                                                                                                      |
 
 ### 代码块与高亮
 
@@ -327,22 +304,11 @@ Markdown(
 
 链接行内图标使用 Android `Drawable`，图片占位图也使用 `Drawable`；块级图标、加载状态和操作区使用 Compose 内容。`MarkdownImageStyle.imageLoader` 可复用宿主已有的 Coil 加载器，`configureRequest` 可设置请求头、缓存策略等 Coil 请求选项。自定义图片加载器的生命周期由宿主管理。
 
-`native.configureMarkwon` 在内置插件注册后、构建 Markwon 前执行；`transformSpans` 在公式、标题、链接、图片和行内代码样式处理后执行；`configureTextView` 在视图样式和渲染文本设置后执行，可进一步覆盖原生视图配置。原生钩子可能在重组或样式变化时再次执行，应保持可重复调用。Markwon、Coil 类型随库的公开 API 暴露，宿主不需要依赖 Material 组件。
+`MarkdownNativeConfiguration` 提供 `configureMarkwon`、`transformSpans` 和 `configureTextView` 三个钩子。前者在内置插件注册后、构建 Markwon 前执行；`transformSpans` 在公式、标题、链接、图片和行内代码样式处理后执行；后者在视图样式和渲染文本设置后执行，可进一步覆盖原生视图配置。原生钩子可能在重组或样式变化时再次执行，应保持可重复调用。Markwon、Coil 类型随库的公开 API 暴露，宿主不需要依赖 Material 组件。
 
-## 📱 环境要求
+## 🤝 开发与贡献
 
-- Android API 26+
-- Kotlin 2.0.21
-- Compose BOM 2024.12.01
-- compileSdk 36
-
-## ✅ 验证
-
-```shell
-sh ./gradlew compileDebugKotlin verifyRendererDependencies
-```
-
-`verifyRendererDependencies` 会检查完整传递依赖图，阻止宿主 UI 依赖重新进入渲染器。
+贡献者请参阅[贡献指南](CONTRIBUTING.md)，其中包含开发环境、本地验证和发行包说明。
 
 ## 📄 许可证
 

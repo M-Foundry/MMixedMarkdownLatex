@@ -5,6 +5,8 @@
 - 新增 `MarkdownTheme` 统一注入颜色、样式、组件、代码块明暗色、链接事件和代码块工具栏；提供 `MarkdownColors` 与 `LocalMarkdownColors`
 - 新增 `parseMarkdownBlocks`、`MarkdownBlock`、`MarkdownBlockType` 和 `MarkdownBlockContext.block`，明确内容解析与块上下文的用途
 - 旧渲染入口、主题名称和 `splitContent` 保留为弃用的源码迁移适配
+- 将贡献者开发环境、验证和发行包说明拆分到中英文贡献指南
+- 重整中英文 README 章节，区分宿主行为、样式扩展和原生配置
 
 ## v1.0.2
 

@@ -50,27 +50,7 @@ dependencies {
 
 The source package and Android namespace are `com.mroldl001.m3l`. `MMixedMarkdownLatex` in the JitPack coordinate is the GitHub repository name. The local Maven coordinate is `com.mroldl001:m3l:1.1.0`.
 
-### Build a local distribution
-
-Install JDK 17 and Android SDK Platform 36, and set the SDK path with `ANDROID_HOME` or `sdk.dir` in `local.properties`. The wrapper pins Gradle 8.13. Build the distribution from this project's root:
-
-```shell
-sh ./gradlew bundleRenderer
-```
-
-On Windows:
-
-```shell
-.\gradlew.bat bundleRenderer
-```
-
-The generated `build/distributions/m3l-renderer-1.1.0.zip` contains a local Maven repository, AARs, source JARs, Gradle metadata, and licenses. JitPack consumers do not need this task.
-
-Add the unpacked repository to `settings.gradle.kts`, then add:
-
-```kotlin
-implementation("com.mroldl001:m3l:1.1.0")
-```
+Contributors should see the [contribution guide](CONTRIBUTING.en.md) for local builds, verification, and distribution packages.
 
 ## 📖 Basic usage
 
@@ -109,7 +89,7 @@ LazyColumn {
 }
 ```
 
-### LaTeX, tables, and streaming
+### LaTeX and tables
 
 Pass `onFormulaWidthMeasured = { widthDp -> ... }` to `Markdown` to receive formula widths in dp.
 
@@ -127,9 +107,11 @@ $$
 | alpha | 1 |
 ```
 
+### Streaming text
+
 During model output, pass `isStreaming = true`, then switch it to `false` when the response is complete. The renderer stabilizes incomplete formulas, fences, and tables and refreshes the stable text about every 80 ms, avoiding repeated broken intermediate layouts. Backticks protect `$` characters inside code. Keep a stable Compose key when rendering streamed messages in a list.
 
-## 🪡 Host interaction
+## 🪡 Host interaction and behavior
 
 Use `MarkdownTheme.codeBlockHeader` or provide `LocalCodeBlockHeader` directly for a custom toolbar. `CodeBlockContent` exposes the raw code, language, highlighted lines, palette, and block bounds. `CodeBlockBody` can be reused in a host-owned fullscreen screen.
 
@@ -142,6 +124,8 @@ Markdown(content = content, onLinkClick = { url -> openLink(url) })
 Code fence labels are normalized (`py` to `python`, `js` to `javascript`, `kt` to `kotlin`, `sh` to `shellscript`, and more). TextMate grammars can come from bundled resources or the `grammarProvider` described below; an unknown language still gets readable code, line numbers, and horizontal scrolling. `CodeBlockContent` exposes the raw code, normalized language, highlighted lines, palette, and a lazy `boundsInWindow` lookup. Copy, fullscreen, icons, and clipboard actions remain host responsibilities.
 
 ## 🧩 Styling and component extensions
+
+This section covers rendering appearance and component replacement only. Link navigation, copy, fullscreen, clipboard, and notifications remain host behavior as described above.
 
 `Markdown(content = ...)` requires only the content. Use `modifier` for the outer layout; `style` and `components` inherit values from `MarkdownTheme`. Pass `onLinkClick` to handle links directly for this renderer. Text color precedence is `style.body.color`, the `color` argument, then `MarkdownColors.text`, which defaults to black. `Color.Unspecified` inherits the default.
 
@@ -172,7 +156,7 @@ Markdown(content = content, color = Color.Black, style = style)
 
 Renderer types are in `com.mroldl001.m3l.*`; `TextStyle`, `FontWeight`, `TextAlign`, `Color`, `dp`, and `sp` come from Compose. A parent can provide `CompositionLocalProvider(LocalMarkdownStyle provides style)`; nested blockquotes and table cells inherit the configuration. Use `copy` on the current style to preserve its other settings. Passing a new `MarkdownStyle()` uses that object's complete defaults.
 
-### All style fields
+### Style fields
 
 | Type                                       | Fields and purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -181,12 +165,16 @@ Renderer types are in `com.mroldl001.m3l.*`; `TextStyle`, `FontWeight`, `TextAli
 | `MarkdownLinkStyle`                        | `color`, `underline`, `textStyle: SpanStyle`; `autoLinkMask`, default web URLs and email addresses, 0 to disable automatic detection; `icon: (String) -> Drawable?` supplies an inline icon for each URL, null for none; `iconSize`, default 16.dp; `iconGap`, default 4.dp; `iconPlacement` defaults to `BeforeText` and can be `AfterText` to place the icon after the link text                                                                                                                                                                                                                                                   |
 | `MarkdownInlineCodeStyle`                  | `color`, `backgroundColor`, `cornerRadius`, `fontFamily`, `fontWeight`, `fontStyle`, `sizeScale`; defaults include monospace, 4.dp corners, and 0.95 size scale                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `MarkdownSelectionStyle`                   | `enabled` controls text selection; `handleColor` and `backgroundColor` override handle and selection colors. Unspecified colors follow the primary theme color. Native handle tinting requires Android API 29+                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+#### Layout, table, and media styles
+
+| Type                                       | Fields and purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MarkdownQuoteStyle`                       | `barColor`, `backgroundColor`, `textColor`, `textStyle`; `barWidth`, `barShape`; `spacing` between the bar and content; `padding` and `contentPadding`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `MarkdownDividerStyle`                     | `color`, `thickness`, `shape`, `padding`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `MarkdownTableStyle` colors and typography | `borderColor`, `headerBackground`, `bodyBackground`, `alternateBackground`, `headerTextColor`, `bodyTextColor`, `headerTextStyle`, `bodyTextStyle`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `MarkdownTableStyle` layout                | `borderWidth`, `cellBorderWidth`, `shape`, `padding`, `cellPadding`; `minColumnWidth`, `maxColumnWidth` bound automatic widths; `columnWidths` supplies widths by zero-based column index, with remaining columns measured automatically; `columnAlignments` overrides text alignment per column; `cellAlignment` mainly controls vertical position, since body text fills the column width and uses `columnAlignments` or `TextStyle.textAlign` for horizontal text alignment; `respectMarkdownAlignment`, default false, enables colon alignment from the Markdown separator row, with explicit `columnAlignments` taking priority |
 | `MarkdownImageStyle`                       | `width`, `height`, `cornerRadius`; native `loadingDrawable` and `failureDrawable`; `onClick` receives the image URL; `imageLoader` supplies a Coil `ImageLoader`; `configureRequest` receives `ImageRequest.Builder` and the URL; `onClickWithContext` receives the image position and `TextView`; `verticalOffsetPx` returns a per-image vertical draw offset in pixels; `motionPadding` reserves space above and below a moving image                                                                                                                                                                                              |
-| `MarkdownNativeConfiguration`              | `configureMarkwon: (Markwon.Builder) -> Unit`, `configureTextView: (TextView) -> Unit`, `transformSpans: (SpannableStringBuilder) -> Unit` for advanced native extensions                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Code blocks and highlighting
 
@@ -281,20 +269,11 @@ The host supplies `quoteIcon: Painter` and `copyCode`. `defaultContent` calls th
 
 Inline link icons and image placeholders use Android `Drawable`; block icons, formula loading/error slots, and action areas use Compose content. `MarkdownImageStyle.imageLoader` can reuse a host Coil loader, and `configureRequest` can set headers, cache policies, and other Coil request options. The host manages the lifecycle of its custom image loader.
 
-`native.configureMarkwon` runs after built-in plugins are registered and before Markwon is built. `transformSpans` runs after formula, heading, link, image, and inline code styling. `configureTextView` runs after view styling and rendered text assignment, so it can override native view settings. Hooks can run again on recomposition or style changes and should tolerate repeated calls. Markwon and Coil types are exposed through the library's public API; Material components are not required.
+`MarkdownNativeConfiguration` provides `configureMarkwon`, `transformSpans`, and `configureTextView`. `configureMarkwon` runs after built-in plugins are registered and before Markwon is built. `transformSpans` runs after formula, heading, link, image, and inline code styling. `configureTextView` runs after view styling and rendered text assignment, so it can override native view settings. Hooks can run again on recomposition or style changes and should tolerate repeated calls. Markwon and Coil types are exposed through the library's public API; Material components are not required.
 
-## 📱 Requirements
+## 🤝 Development and contribution
 
-- Android API 26+
-- Kotlin 2.0.21
-- Compose BOM 2024.12.01
-- compileSdk 36
-
-## ✅ Verification
-
-```shell
-sh ./gradlew compileDebugKotlin verifyRendererDependencies
-```
+See the [contribution guide](CONTRIBUTING.en.md) for the development environment, local verification, and distribution package instructions.
 
 ## 📄 License
 
