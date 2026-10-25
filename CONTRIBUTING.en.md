@@ -1,5 +1,7 @@
 # Contribution guide
 
+**Languages:** [简体中文](CONTRIBUTING.md) | English
+
 ## Development environment
 
 - JDK 17

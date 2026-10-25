@@ -1,5 +1,7 @@
 # 贡献指南
 
+**语言：** 简体中文 | [English](CONTRIBUTING.en.md)
+
 ## 开发环境
 
 - JDK 17
